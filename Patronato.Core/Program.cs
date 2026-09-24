@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +30,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.EnsureCreated(); // ¡Crea patronato.db con todas sus tablas al instante!
+    DbInitializer.Initialize(db); // Carga datos iniciales para usuarios, catálogo, masajes y préstamos
 }
 
 // 5. Configurar Swagger para pruebas interactivas

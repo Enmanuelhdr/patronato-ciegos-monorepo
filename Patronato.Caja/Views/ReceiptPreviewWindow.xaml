@@ -1,0 +1,207 @@
+<Window x:Class="Patronato.Caja.Views.ReceiptPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Comprobante de Caja - Patronato Nacional de Ciegos" 
+        Height="680" Width="440"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F1F5F9">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Contenedor del Ticket Imprimible -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Grid.Row="0">
+            <Border x:Name="TicketVisualBorder"
+                    Background="White" 
+                    BorderBrush="#CBD5E1" 
+                    BorderThickness="1" 
+                    CornerRadius="6" 
+                    Padding="20"
+                    Margin="0,0,0,12">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="12" Direction="270" ShadowDepth="3" Opacity="0.1" />
+                </Border.Effect>
+                
+                <StackPanel>
+                    <!-- Encabezado Institucional -->
+                    <TextBlock Text="PATRONATO NACIONAL DE CIEGOS" 
+                               FontWeight="Bold" FontSize="15" 
+                               HorizontalAlignment="Center" 
+                               Foreground="#0F172A" TextAlignment="Center" />
+                    <TextBlock Text="INCORPORADO" 
+                               FontWeight="SemiBold" FontSize="11" 
+                               HorizontalAlignment="Center" Foreground="#475569" />
+                    <TextBlock Text="RNC: 4-01-00623-1" 
+                               FontSize="11" HorizontalAlignment="Center" Foreground="#475569" Margin="0,2,0,0" />
+                    <TextBlock Text="Calle Huáscar Tejeda #54, Zona Universitaria" 
+                               FontSize="11" HorizontalAlignment="Center" Foreground="#64748B" />
+                    <TextBlock Text="Santo Domingo, D.N. | Tel: 809-533-2833" 
+                               FontSize="11" HorizontalAlignment="Center" Foreground="#64748B" />
+
+                    <!-- Separador punteado -->
+                    <Rectangle Height="1" Fill="#94A3B8" Margin="0,12,0,12" SnapsToDevicePixels="True" />
+
+                    <!-- Datos del Comprobante -->
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="RECIBO NO:" FontWeight="Bold" FontSize="12" Foreground="#1E293B" />
+                        <TextBlock x:Name="TxtNumeroRecibo" Grid.Column="1" Text="REC-2026-0001" FontWeight="Bold" FontSize="12" HorizontalAlignment="Right" Foreground="#0284C7" />
+                    </Grid>
+
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="FECHA / HORA:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtFechaHora" Grid.Column="1" Text="24/09/2026 12:00 PM" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B" />
+                    </Grid>
+
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="SUCURSAL:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtSucursal" Grid.Column="1" Text="Sede Central Santo Domingo" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="CAJERO:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtCajero" Grid.Column="1" Text="Ana Rosario" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B" />
+                    </Grid>
+
+                    <!-- Separador punteado -->
+                    <Rectangle Height="1" Fill="#E2E8F0" Margin="0,8,0,8" SnapsToDevicePixels="True" />
+
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="OPERACIÓN:" FontSize="11" FontWeight="SemiBold" Foreground="#475569" />
+                        <TextBlock x:Name="TxtTipoOperacion" Grid.Column="1" Text="VENTA DE PRODUCTOS" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#047857" />
+                    </Grid>
+
+                    <Grid Margin="0,2" x:Name="PanelCliente">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="CLIENTE/BENEF:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtCliente" Grid.Column="1" Text="Consumidor Final" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <Grid Margin="0,2" x:Name="PanelIdentificacion">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="CÉDULA / RNC:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtIdentificacion" Grid.Column="1" Text="001-0000000-0" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B" />
+                    </Grid>
+
+                    <!-- Separador punteado -->
+                    <Rectangle Height="1" Fill="#94A3B8" Margin="0,8,0,8" SnapsToDevicePixels="True" />
+
+                    <!-- Detalle de Ítems / Concepto -->
+                    <TextBlock Text="DETALLE DE CONCEPTOS" FontWeight="Bold" FontSize="11" Foreground="#1E293B" Margin="0,0,0,4" />
+                    <TextBlock x:Name="TxtDetalle" 
+                               Text="2x Suaper Institucional (RD$ 250.00) = RD$ 500.00" 
+                               FontSize="11" 
+                               FontFamily="Consolas, Courier New, Segoe UI" 
+                               Foreground="#334155" 
+                               TextWrapping="Wrap" 
+                               Margin="0,0,0,8" />
+
+                    <!-- Separador punteado -->
+                    <Rectangle Height="1" Fill="#94A3B8" Margin="0,4,0,8" SnapsToDevicePixels="True" />
+
+                    <!-- Desglose Financiero -->
+                    <Grid Margin="0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="TOTAL COBRADO:" FontWeight="Bold" FontSize="14" Foreground="#0F172A" />
+                        <TextBlock x:Name="TxtTotal" Grid.Column="1" Text="RD$ 500.00" FontWeight="Bold" FontSize="15" Foreground="#0F172A" />
+                    </Grid>
+
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="MÉTODO DE PAGO:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtMetodoPago" Grid.Column="1" Text="Efectivo" FontSize="11" FontWeight="SemiBold" Foreground="#1E293B" />
+                    </Grid>
+
+                    <Grid x:Name="PanelMontoRecibido" Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="MONTO RECIBIDO:" FontSize="11" Foreground="#475569" />
+                        <TextBlock x:Name="TxtMontoRecibido" Grid.Column="1" Text="RD$ 1,000.00" FontSize="11" Foreground="#1E293B" />
+                    </Grid>
+
+                    <Grid x:Name="PanelDevuelta" Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="DEVUELTA / CAMBIO:" FontSize="11" FontWeight="SemiBold" Foreground="#047857" />
+                        <TextBlock x:Name="TxtDevuelta" Grid.Column="1" Text="RD$ 500.00" FontSize="11" FontWeight="Bold" Foreground="#047857" />
+                    </Grid>
+
+                    <!-- Pie de página institucional -->
+                    <Rectangle Height="1" Fill="#CBD5E1" Margin="0,14,0,8" SnapsToDevicePixels="True" />
+                    <TextBlock Text="&quot;La ceguera no te impide ver con el corazón&quot;" 
+                               FontStyle="Italic" FontSize="10" HorizontalAlignment="Center" Foreground="#64748B" TextAlignment="Center" />
+                    <TextBlock Text="¡Gracias por apoyar los programas del Patronato!" 
+                               FontWeight="SemiBold" FontSize="10" HorizontalAlignment="Center" Foreground="#047857" Margin="0,2,0,0" TextAlignment="Center" />
+                    <TextBlock Text="Comprobante generado por Sistema de Caja POS" 
+                               FontSize="9" HorizontalAlignment="Center" Foreground="#94A3B8" Margin="0,2,0,0" />
+                </StackPanel>
+            </Border>
+        </ScrollViewer>
+
+        <!-- Botones de Acción -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Imprimir Recibo" 
+                    Width="140" Height="36" 
+                    Background="#0284C7" Foreground="White" 
+                    FontWeight="SemiBold" FontSize="12"
+                    BorderThickness="0" Margin="0,0,10,0" 
+                    Click="BtnImprimir_Click">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="4" />
+                    </Style>
+                </Button.Resources>
+            </Button>
+            <Button Content="Cerrar" 
+                    Width="90" Height="36" 
+                    Background="#E2E8F0" Foreground="#334155" 
+                    FontWeight="SemiBold" FontSize="12"
+                    BorderThickness="0"
+                    Click="BtnCerrar_Click">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="4" />
+                    </Style>
+                </Button.Resources>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>
