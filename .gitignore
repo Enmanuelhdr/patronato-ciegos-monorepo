@@ -1,0 +1,71 @@
+# =========================
+# Global ignores
+# =========================
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# =========================
+# .NET / Visual Studio
+# =========================
+bin/
+obj/
+[Bb]uild/
+[Ll]ogs/
+*.dbmdl
+*.bak
+*.mdf
+*.ldf
+*.ndf
+*.rdl.data
+*.rdl.designer.cs
+*.pdb
+*.cache
+*.exe
+*.dll
+*.appx*
+*.msix*
+*.nupkg
+TestResults/
+.nuget/
+packages/
+project.lock.json
+.vs/
+
+# =========================
+# React Native / Node.js
+# =========================
+node_modules/
+.expo/
+.expo-shared/
+dist/
+build/
+coverage/
+.env*
+android/app/build/
+ios/build/
+ios/Pods/
+
+# =========================
+# WinForms (extra .NET artifacts)
+# =========================
+*.sock
+*.socket
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.swp
+*.swo
+*~
