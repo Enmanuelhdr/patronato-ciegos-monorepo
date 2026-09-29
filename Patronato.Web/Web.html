@@ -1,1 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patronato Nacional de Ciegos</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#111827;--paper:#fff;--wash:#eef2f7;--brand:#0b3c5d;--line:#9aa7b8;--focus:#f2b705;--bad:#a4161a;--good:#0a6b3a}
+*{box-sizing:border-box}
+body{margin:0;font:1.125rem/1.55 "Atkinson Hyperlegible",Verdana,sans-serif;color:var(--ink);background:var(--wash)}
+:focus-visible{outline:4px solid var(--focus);outline-offset:2px}
+header{background:var(--brand);color:#fff;padding:.9rem 1.5rem;display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
+header h1{font-size:1.3rem;margin:0}
+nav{background:#fff;border-bottom:2px solid var(--line);padding:.5rem 1.5rem;display:flex;flex-wrap:wrap;gap:.5rem}
+nav button{margin:0;background:#fff;color:var(--brand)}
+nav button[aria-current=page]{background:var(--brand);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:1.5rem}
+.panel{background:var(--paper);border:2px solid var(--line);border-radius:6px;padding:1.5rem;margin-bottom:1.5rem}
+h2{margin:0 0 1rem;font-size:1.5rem}
+label{display:block;font-weight:700;margin:1rem 0 .25rem}
+input,select{width:100%;font:inherit;padding:.6rem .75rem;border:2px solid var(--ink);border-radius:4px;background:#fff;color:var(--ink)}
+.chk{display:flex;align-items:center;gap:.6rem;margin-top:1.8rem}.chk label{margin:0}.chk input{width:1.5rem;height:1.5rem}
+button{font:inherit;font-weight:700;padding:.6rem 1.2rem;border:2px solid var(--brand);border-radius:4px;background:var(--brand);color:#fff;cursor:pointer;margin-top:1.25rem}
+button.ghost,td button{background:#fff;color:var(--brand);margin:0;padding:.35rem .8rem}
+header button{margin:0;border-color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 1.25rem}
+.msg{margin-top:1rem;padding:.75rem 1rem;border-left:6px solid;font-weight:700}.msg:empty{display:none}
+.err{color:var(--bad);border-color:var(--bad);background:#fdecec}.ok{color:var(--good);border-color:var(--good);background:#e8f6ee}
+.wrap{overflow-x:auto;margin-top:1rem}
+table{border-collapse:collapse;width:100%;min-width:640px}
+caption{text-align:left;font-weight:700;padding-bottom:.5rem}
+th,td{text-align:left;padding:.6rem .75rem;border-bottom:1px solid var(--line);vertical-align:top}th{background:var(--wash)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
+.cards button{margin:0;padding:1.2rem;background:#fff;color:var(--ink);border-color:var(--line);text-align:left}
+.cards b{display:block;font-size:2.2rem;color:var(--brand)}
+.login{max-width:460px;margin:3rem auto}
+dialog{border:3px solid var(--brand);border-radius:6px;padding:1.5rem;width:min(520px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
 
+<main id="vista-login" class="login">
+  <section class="panel" aria-labelledby="t-login">
+    <h1 id="t-login" style="margin-top:0">Patronato Nacional de Ciegos</h1>
+    <p>Inicia sesión para continuar.</p>
+    <form id="form-login" novalidate>
+      <label for="usuario">Nombre de usuario</label><input id="usuario" autocomplete="username">
+      <label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password">
+      <button type="submit">Iniciar sesión</button>
+      <div id="msg-login" class="msg" role="alert"></div>
+    </form>
+  </section>
+</main>
+
+<div id="vista-app" hidden>
+  <header><h1>Patronato Nacional de Ciegos</h1>
+    <div><span id="quien"></span> <button id="btn-salir" type="button">Cerrar sesión</button></div></header>
+  <nav id="menu" aria-label="Módulos"></nav>
+  <main id="contenido" tabindex="-1">
+    <section id="p-inicio" class="panel" hidden><h2 id="t-inicio">Resumen</h2><div class="cards" id="cards"></div></section>
+    <section id="p-form" class="panel" aria-labelledby="t-form" hidden>
+      <h2 id="t-form"></h2>
+      <form id="form-mod" novalidate><div class="grid" id="campos"></div>
+        <button type="submit">Guardar</button>
+        <div id="msg-mod" class="msg" role="status" aria-live="polite"></div></form>
+    </section>
+    <section id="p-lista" class="panel" aria-labelledby="t-lista" hidden>
+      <h2 id="t-lista"></h2>
+      <label for="buscar">Buscar</label><input id="buscar" type="search">
+      <div id="msg-lista" class="msg" role="alert"></div>
+      <div class="wrap"><table><caption id="conteo" aria-live="polite"></caption><thead id="cab"></thead><tbody id="filas"></tbody></table></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlg-t">
+  <form id="form-dlg" novalidate>
+    <h2 id="dlg-t"></h2><p id="dlg-q"></p><div id="dlg-campos"></div>
+    <button type="submit">Confirmar</button> <button type="button" class="ghost" id="dlg-x">Cancelar</button>
+    <div id="msg-dlg" class="msg" role="alert"></div>
+  </form>
+</dialog>
+
+<script>
+// Direcciones del Core: prueba la primera y si no responde usa la siguiente.
+const BASES = ["http://localhost:57141", "https://localhost:57140"];
+let bi = 0;
+
+const $ = id => document.getElementById(id), enc = encodeURIComponent;
+const SEDES = {1:"Santo Domingo",2:"Santiago",3:"Barahona"};
+const COND = {1:"Baja visión",2:"Ceguera total congénita",3:"Ceguera total adquirida"};
+const ETAPA = {1:"Funcional",2:"Profesional"};
+const ROLES = {1:"Administrador",2:"Cajero",3:"Médico oftalmólogo",4:"Instructor de rehabilitación",5:"Recepcionista"};
+const ROLNOM = {Administrador:"Administrador",Cajero:"Cajero",MedicoOftalmologo:"Médico oftalmólogo",InstructorRehabilitacion:"Instructor de rehabilitación",Recepcionista:"Recepcionista"};
+
+// ===== Capa de servicio =====
+async function api(ruta, o = {}) {
+  let r;
+  for (let i = 0; i < BASES.length && !r; i++) {
+    const j = (bi + i) % BASES.length;
+    try { r = await fetch(BASES[j] + ruta, {headers:{"Content-Type":"application/json"}, ...o}); bi = j; } catch {}
+  }
+  if (!r) throw new Error("No se pudo conectar con el servidor. Verifica que el Core esté ejecutándose.");
+  const t = await r.text();
+  if (!r.ok) throw new Error(t.replace(/^"|"$/g, "") || "Error " + r.status);
+  return t ? JSON.parse(t) : null;
+}
+
+// ===== Datos y búsquedas =====
+const D = {};
+const nb = id => { const b = (D.beneficiarios||[]).find(x => x.id == id); return b ? b.nombres + " " + b.apellidos : "#" + id; };
+const ns = id => { const s = (D.sucursales||[]).find(x => x.id == id); return s ? s.nombre : "#" + id; };
+const optBenef = () => Object.fromEntries((D.beneficiarios||[]).map(b => [b.id, `${b.nombres} ${b.apellidos} (${b.cedula})`]));
+const optSuc = () => Object.fromEntries((D.sucursales||[]).map(s => [s.id, s.nombre]));
+const fecha = f => f ? new Date(f).toLocaleDateString("es-DO") : "—";
+const si = v => v ? "Sí" : "No";
+
+// ===== Módulos: columnas, formulario y acciones de cada uno =====
+// campo: [clave, etiqueta, tipo(t texto, n número, s lista, c casilla, d fecha, p clave), opciones, opcional]
+const M = {
+  beneficiarios:{t:"Beneficiarios", roles:["Administrador","Recepcionista"], url:"/api/Beneficiarios",
+    cols:[["Nombre",r=>r.nombres+" "+r.apellidos],["Cédula",r=>r.cedula],["Teléfono",r=>r.telefono],["Sede",r=>SEDES[r.sedeAsignada]],["Condición",r=>COND[r.condicionVisual]]],
+    form:[["nombres","Nombres","t"],["apellidos","Apellidos","t"],["cedula","Cédula (001-0000000-0)","t"],["telefono","Teléfono","t",0,1],["sedeAsignada","Sede","s",SEDES],["condicionVisual","Condición visual","s",COND]]},
+  consultas:{t:"Consultas oftalmológicas", roles:["Administrador","Recepcionista","MedicoOftalmologo"], url:"/api/Consultas",
+    cols:[["Paciente",r=>nb(r.beneficiarioId)],["Fecha",r=>fecha(r.fecha)],["Oftalmólogo",r=>r.oftalmologo],["Sede",r=>SEDES[r.sede]],["Diagnóstico",r=>r.diagnosticoOcular||"Pendiente"],["Cobrada",r=>si(r.estaFacturadaEnCaja)]],
+    form:[["beneficiarioId","Paciente","s",optBenef],["sede","Sede","s",SEDES],["oftalmologo","Oftalmólogo","t"],["fecha","Fecha y hora","d"],["tarifaConsulta","Tarifa (RD$)","n"],["cubiertoPorARS","Cubierta por ARS","c"]],
+    acts:[{t:"Registrar diagnóstico", fields:[["diagnostico","Diagnóstico","t"],["tratamiento","Tratamiento","t",0,1]],
+      run:(r,v)=>api(`/api/Consultas/${r.id}/diagnostico?diagnostico=${enc(v.diagnostico)}&tratamiento=${enc(v.tratamiento)}`,{method:"PUT"})}]},
+  rehabilitacion:{t:"Rehabilitación", roles:["Administrador","InstructorRehabilitacion"], url:"/api/Rehabilitacion",
+    cols:[["Alumno",r=>nb(r.beneficiarioId)],["Taller",r=>r.tallerMateria],["Etapa",r=>ETAPA[r.etapa]],["Sede",r=>SEDES[r.sede]],["Inicio",r=>fecha(r.fechaInicio)],["Estado",r=>r.completado?"Graduado":"En curso"]],
+    form:[["beneficiarioId","Alumno","s",optBenef],["sede","Sede","s",SEDES],["etapa","Etapa","s",ETAPA],["tallerMateria","Taller (Braille, bastón, oficio…)","t"]],
+    acts:[{t:"Graduar", show:r=>!r.completado, q:"¿Marcar a este alumno como graduado de la etapa?", fields:[],
+      run:r=>api(`/api/Rehabilitacion/${r.id}/graduar`,{method:"PUT"})}]},
+  voluntarios:{t:"Voluntarios", roles:["Administrador","Recepcionista"], url:"/api/Voluntarios",
+    cols:[["Nombre",r=>r.nombreCompleto],["Cédula",r=>r.cedula],["Teléfono",r=>r.telefono],["Correo",r=>r.correo],["Área de apoyo",r=>r.areaApoyo]],
+    form:[["nombreCompleto","Nombre completo","t"],["cedula","Cédula","t"],["telefono","Teléfono","t",0,1],["correo","Correo","t",0,1],["areaApoyo","Área de apoyo","t"]]},
+  inventario:{t:"Inventario", roles:["Administrador"], url:"/api/Inventario",
+    cols:[["Código",r=>r.codigo],["Producto",r=>r.nombre],["Categoría",r=>r.categoria],["Precio",r=>"RD$ "+r.precioVenta],["Existencia",r=>r.stockDisponible]],
+    form:[["codigo","Código","t"],["nombre","Nombre","t"],["categoria","Categoría","t"],["precioVenta","Precio de venta (RD$)","n"],["stockDisponible","Existencia inicial","n"]],
+    acts:[{t:"Agregar existencia", fields:[["cantidad","Cantidad a agregar","n"]],
+      run:(r,v)=>api(`/api/Inventario/${r.id}/agregar-stock?cantidad=${v.cantidad}`,{method:"PUT"})}]},
+  sucursales:{t:"Sucursales", roles:["Administrador"], url:"/api/Sucursales",
+    cols:[["Nombre",r=>r.nombre],["Dirección",r=>r.direccion],["Teléfono",r=>r.telefono],["Encargado",r=>r.encargado],["Activa",r=>si(r.activa)]],
+    form:[["nombre","Nombre","t"],["direccion","Dirección","t"],["telefono","Teléfono","t",0,1],["encargado","Encargado","t"]]},
+  usuarios:{t:"Usuarios", roles:["Administrador"], url:"/api/Usuarios",
+    cols:[["Nombre",r=>r.nombreCompleto],["Usuario",r=>r.nombreUsuario],["Correo",r=>r.correo],["Rol",r=>ROLES[r.rol]],["Sucursal",r=>ns(r.sucursalId)],["Activo",r=>si(r.activo)]],
+    form:[["nombreCompleto","Nombre completo","t"],["nombreUsuario","Nombre de usuario","t"],["correo","Correo","t",0,1],["passwordHash","Contraseña","p"],["rol","Rol","s",ROLES],["sucursalId","Sucursal","s",optSuc]],
+    acts:[{t:"Cambiar rol", fields:[["nuevoRol","Nuevo rol","s",ROLES]],
+      run:(r,v)=>api(`/api/Usuarios/${r.id}/cambiar-rol?nuevoRol=${v.nuevoRol}`,{method:"PUT"})}]}
+};
+
+// ===== Formularios genéricos =====
+function campos(defs) {
+  const f = document.createDocumentFragment();
+  defs.forEach(([k, l, t, o]) => {
+    const w = document.createElement("div"), lb = document.createElement("label"); let i;
+    lb.htmlFor = "f_" + k; lb.textContent = l;
+    if (t == "s") {
+      i = document.createElement("select"); const op = typeof o == "function" ? o() : o;
+      for (const v in op) { const x = document.createElement("option"); x.value = v; x.textContent = op[v]; i.appendChild(x); }
+    } else {
+      i = document.createElement("input"); i.type = {t:"text",n:"number",c:"checkbox",d:"datetime-local",p:"password"}[t];
+      if (t == "n") { i.step = "any"; i.min = 0; }
+    }
+    i.id = "f_" + k;
+    if (t == "c") { w.className = "chk"; w.append(i, lb); } else w.append(lb, i);
+    f.appendChild(w);
+  });
+  return f;
+}
+function valores(defs) {
+  const v = {};
+  for (const [k, l, t, , op] of defs) {
+    const e = $("f_" + k);
+    if (t == "c") v[k] = e.checked;
+    else if (t == "n" || t == "s") { v[k] = +e.value; if (e.value === "" || isNaN(v[k])) throw new Error("Completa: " + l); }
+    else if (t == "d") { if (!e.value) throw new Error("Completa: " + l); v[k] = new Date(e.value).toISOString(); }
+    else { v[k] = e.value.trim(); if (!v[k] && !op) throw new Error("Completa: " + l); }
+  }
+  return v;
+}
+const aviso = (id, t, c) => { $(id).textContent = t; $(id).className = "msg " + (c || ""); };
+
+// ===== Sesión y navegación =====
+let ses = null, act = null;
+const permitidos = () => Object.keys(M).filter(k => M[k].roles.includes(ses.rol));
+
+async function entrar(s) {
+  ses = s; sessionStorage.setItem("sesion", JSON.stringify(s));
+  $("vista-login").hidden = true; $("vista-app").hidden = false;
+  $("quien").textContent = `${s.nombre} (${ROLNOM[s.rol] || s.rol})`;
+  $("menu").innerHTML = "";
+  ["inicio", ...permitidos()].forEach(k => {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.k = k;
+    b.textContent = k == "inicio" ? "Inicio" : M[k].t; b.onclick = () => ir(k); $("menu").appendChild(b);
+  });
+  await Promise.all(["beneficiarios", "sucursales"].map(async k => D[k] = await api(k == "sucursales" ? "/api/Sucursales" : "/api/Beneficiarios").catch(() => [])));
+  ir("inicio");
+}
+function salir() { sessionStorage.removeItem("sesion"); ses = null; $("vista-app").hidden = true; $("vista-login").hidden = false; $("usuario").focus(); }
+
+async function ir(k) {
+  act = k;
+  document.querySelectorAll("#menu button").forEach(b => b.toggleAttribute("aria-current", b.dataset.k == k) || b.removeAttribute("aria-current"));
+  document.querySelectorAll("#menu button").forEach(b => b.dataset.k == k ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  $("p-inicio").hidden = k != "inicio"; $("p-form").hidden = $("p-lista").hidden = k == "inicio";
+  if (k == "inicio") return inicio();
+  const m = M[k];
+  $("t-form").textContent = "Registrar: " + m.t; $("t-lista").textContent = m.t;
+  $("p-form").hidden = !m.form; $("campos").replaceChildren(campos(m.form)); aviso("msg-mod", "");
+  $("buscar").value = "";
+  $("cab").innerHTML = ""; const tr = document.createElement("tr");
+  [...m.cols.map(c => c[0]), ...(m.acts ? ["Acciones"] : [])].forEach(t => { const th = document.createElement("th"); th.scope = "col"; th.textContent = t; tr.appendChild(th); });
+  $("cab").appendChild(tr);
+  await cargar(); $("contenido").focus();
+}
+async function cargar() {
+  const k = act;
+  try { D[k] = await api(M[k].url); aviso("msg-lista", ""); pintar(); } catch (e) { aviso("msg-lista", e.message, "err"); }
+}
+function pintar() {
+  const m = M[act], q = $("buscar").value.trim().toLowerCase(), data = D[act] || [];
+  const filas = data.map(r => ({r, c: m.cols.map(c => String(c[1](r) ?? "—"))})).filter(x => x.c.join(" ").toLowerCase().includes(q));
+  $("filas").innerHTML = "";
+  filas.forEach(({r, c}) => {
+    const tr = document.createElement("tr");
+    c.forEach(t => { const td = document.createElement("td"); td.textContent = t; tr.appendChild(td); });
+    if (m.acts) {
+      const td = document.createElement("td");
+      m.acts.filter(a => !a.show || a.show(r)).forEach(a => {
+        const b = document.createElement("button"); b.type = "button"; b.textContent = a.t;
+        b.setAttribute("aria-label", `${a.t}: ${c[0]}`); b.onclick = () => dialogo(a, r, c[0]); td.appendChild(b); td.append(" ");
+      });
+      tr.appendChild(td);
+    }
+    $("filas").appendChild(tr);
+  });
+  $("conteo").textContent = filas.length ? `${filas.length} registro(s)` : "No hay registros que coincidan.";
+}
+async function inicio() {
+  $("cards").innerHTML = "";
+  for (const k of permitidos()) {
+    const b = document.createElement("button"); b.type = "button"; b.onclick = () => ir(k);
+    const n = document.createElement("b"); n.textContent = "…"; b.append(n, M[k].t); $("cards").appendChild(b);
+    api(M[k].url).then(d => n.textContent = d.length).catch(() => n.textContent = "?");
+  }
+  if (!permitidos().length) $("cards").textContent = "Tu rol no tiene módulos en la web.";
+}
+
+// ===== Eventos =====
+$("form-login").onsubmit = async e => {
+  e.preventDefault();
+  const u = $("usuario").value.trim(), p = $("password").value;
+  if (!u || !p) return aviso("msg-login", "Escribe tu usuario y tu contraseña.", "err");
+  try { const s = await api(`/api/Usuarios/login?nombreUsuario=${enc(u)}&password=${enc(p)}`, {method:"POST"}); $("password").value = ""; aviso("msg-login", ""); entrar(s); }
+  catch (er) { aviso("msg-login", er.message, "err"); }
+};
+$("btn-salir").onclick = salir;
+$("buscar").oninput = pintar;
+$("form-mod").onsubmit = async e => {
+  e.preventDefault(); const m = M[act];
+  try { const v = valores(m.form); await api(m.url, {method:"POST", body:JSON.stringify(v)});
+    aviso("msg-mod", "Guardado correctamente.", "ok"); e.target.reset(); await cargar(); }
+  catch (er) { aviso("msg-mod", er.message, "err"); }
+};
+let accion = null;
+function dialogo(a, r, quien) {
+  accion = {a, r}; $("dlg-t").textContent = a.t + ": " + quien; $("dlg-q").textContent = a.q || "";
+  $("dlg-campos").replaceChildren(campos(a.fields)); aviso("msg-dlg", ""); $("dlg").showModal();
+}
+$("dlg-x").onclick = () => $("dlg").close();
+$("form-dlg").onsubmit = async e => {
+  e.preventDefault();
+  try { const v = valores(accion.a.fields); await accion.a.run(accion.r, v); $("dlg").close(); aviso("msg-lista", "Listo: " + accion.a.t.toLowerCase() + " aplicado.", "ok"); await cargar(); $("msg-lista").setAttribute("role", "status"); }
+  catch (er) { aviso("msg-dlg", er.message, "err"); }
+};
+
+const previa = sessionStorage.getItem("sesion");
+if (previa) entrar(JSON.parse(previa)); else $("usuario").focus();
+</script>
+</body>
+</html>
