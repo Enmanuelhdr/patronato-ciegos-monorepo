@@ -41,7 +41,12 @@ app.UseSwaggerUI();
 var httpLogger = log4net.LogManager.GetLogger("Patronato.Gateway.Http");
 app.Use(async (context, next) =>
 {
-    log4net.LogicalThreadContext.Properties["Origen"] = "Web";
+    // La Caja también entra por HTTP para sus consultas de solo lectura (ver ReverseProxyService);
+    // respeta el X-Origen que ella misma coloca en vez de asumir siempre "Web".
+    var origen = context.Request.Headers.TryGetValue("X-Origen", out var origenHeader) && !string.IsNullOrWhiteSpace(origenHeader)
+        ? origenHeader.ToString()
+        : "Web";
+    log4net.LogicalThreadContext.Properties["Origen"] = origen;
 
     try
     {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +25,8 @@ namespace Patronato.Core.Data
         public DbSet<Sucursal> Sucursales { get; set; }
         public DbSet<Usuario> Usuarios { get; set; }
         public DbSet<LogEntry> Logs { get; set; }
+        public DbSet<TransaccionCaja> TransaccionesCaja { get; set; }
+        public DbSet<OrdenPedidoCaja> OrdenesPedidoCaja { get; set; }
     }
 
 }

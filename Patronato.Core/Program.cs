@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,6 +48,8 @@ using (var scope = app.Services.CreateScope())
             ""Mensaje"" TEXT NOT NULL,
             ""Excepcion"" TEXT NULL
         );");
+
+    DbInitializer.Initialize(db); // Carga datos iniciales para usuarios, catálogo, masajes y préstamos
 }
 
 // 5. Configurar Swagger para pruebas interactivas

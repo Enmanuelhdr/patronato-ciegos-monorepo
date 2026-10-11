@@ -29,6 +29,7 @@ public class CoreGatewayService
                 "MASAJE_COBRAR" => await CobrarMasajeAsync(request, origen),
                 "PRESTAMO_ABONAR" => await AbonarPrestamoAsync(request, origen),
                 "PRODUCTO_VENDER" => await VenderProductoAsync(request, origen),
+                "VENTA_CARRITO" => await VenderCarritoAsync(request, origen),
                 "DONACION_REGISTRAR" => await RegistrarDonacionAsync(request, origen),
                 _ => Rechazar(request, "12", $"Código de transacción no soportado: {request.CodigoTransaccion}")
             };
@@ -45,35 +46,77 @@ public class CoreGatewayService
 
     private async Task<TransaccionResponse> CobrarMasajeAsync(TransaccionRequest request, string origen)
     {
-        var id = request.Datos.GetProperty("id").GetInt32();
-        var response = await EnviarAsync(HttpMethod.Post, $"api/caja/cobrar-masaje/{id}", null, origen);
+        var datos = request.Datos;
+        var id = datos.GetProperty("id").GetInt32();
+        var query = ConstruirQueryCobro(datos);
+        var response = await EnviarAsync(HttpMethod.Post, $"api/caja/cobrar-masaje/{id}?{query}", null, origen);
         return await TraducirRespuestaAsync(request, response);
     }
 
     private async Task<TransaccionResponse> AbonarPrestamoAsync(TransaccionRequest request, string origen)
     {
-        var prestamoId = request.Datos.GetProperty("prestamoId").GetInt32();
-        var monto = request.Datos.GetProperty("monto").GetDecimal();
+        var datos = request.Datos;
+        var prestamoId = datos.GetProperty("prestamoId").GetInt32();
+        var monto = datos.GetProperty("monto").GetDecimal();
+        var query = ConstruirQueryCobro(datos);
         var response = await EnviarAsync(HttpMethod.Post,
-            $"api/caja/abonar-prestamo?prestamoId={prestamoId}&monto={monto}", null, origen);
+            $"api/caja/abonar-prestamo?prestamoId={prestamoId}&monto={monto}&{query}", null, origen);
         return await TraducirRespuestaAsync(request, response);
     }
 
     private async Task<TransaccionResponse> VenderProductoAsync(TransaccionRequest request, string origen)
     {
-        var productoId = request.Datos.GetProperty("productoId").GetInt32();
-        var cantidad = request.Datos.GetProperty("cantidad").GetInt32();
+        var datos = request.Datos;
+        var productoId = datos.GetProperty("productoId").GetInt32();
+        var cantidad = datos.GetProperty("cantidad").GetInt32();
+        var query = ConstruirQueryCobro(datos);
+        if (datos.TryGetProperty("cliente", out var clienteEl) && clienteEl.ValueKind == JsonValueKind.String)
+            query += $"&cliente={Uri.EscapeDataString(clienteEl.GetString() ?? string.Empty)}";
+
         var response = await EnviarAsync(HttpMethod.Post,
-            $"api/caja/vender-producto?productoId={productoId}&cantidad={cantidad}", null, origen);
+            $"api/caja/vender-producto?productoId={productoId}&cantidad={cantidad}&{query}", null, origen);
+        return await TraducirRespuestaAsync(request, response);
+    }
+
+    private async Task<TransaccionResponse> VenderCarritoAsync(TransaccionRequest request, string origen)
+    {
+        var content = new StringContent(request.Datos.GetRawText(), Encoding.UTF8, "application/json");
+        var response = await EnviarAsync(HttpMethod.Post, "api/caja/vender-carrito", content, origen);
         return await TraducirRespuestaAsync(request, response);
     }
 
     private async Task<TransaccionResponse> RegistrarDonacionAsync(TransaccionRequest request, string origen)
     {
-        var content = new StringContent(request.Datos.GetRawText(), Encoding.UTF8, "application/json");
-        var response = await EnviarAsync(HttpMethod.Post, "api/caja/donacion", content, origen);
+        var datos = request.Datos;
+        var cajero = ObtenerTexto(datos, "cajero", "Caja Principal");
+        var sucursal = ObtenerTexto(datos, "sucursal", "Sede Central");
+        var content = new StringContent(datos.GetRawText(), Encoding.UTF8, "application/json");
+        var query = $"cajero={Uri.EscapeDataString(cajero)}&sucursal={Uri.EscapeDataString(sucursal)}";
+        var response = await EnviarAsync(HttpMethod.Post, $"api/caja/donacion?{query}", content, origen);
         return await TraducirRespuestaAsync(request, response);
     }
+
+    // Arma el query string común a los endpoints de cobro: así el Core recibe el método de pago,
+    // el monto recibido en efectivo y la identidad real del cajero/sucursal que vienen de la Caja,
+    // en vez de quedarse con los valores por defecto del Core.
+    private static string ConstruirQueryCobro(JsonElement datos)
+    {
+        var metodoPago = ObtenerTexto(datos, "metodoPago", "Efectivo");
+        var cajero = ObtenerTexto(datos, "cajero", "Caja Principal");
+        var sucursal = ObtenerTexto(datos, "sucursal", "Sede Central");
+
+        var query = $"metodoPago={Uri.EscapeDataString(metodoPago)}&cajero={Uri.EscapeDataString(cajero)}&sucursal={Uri.EscapeDataString(sucursal)}";
+
+        if (datos.TryGetProperty("montoRecibido", out var montoEl) && montoEl.ValueKind == JsonValueKind.Number)
+            query += $"&montoRecibido={montoEl.GetDecimal()}";
+
+        return query;
+    }
+
+    private static string ObtenerTexto(JsonElement datos, string propiedad, string valorPorDefecto) =>
+        datos.TryGetProperty(propiedad, out var el) && el.ValueKind == JsonValueKind.String
+            ? el.GetString() ?? valorPorDefecto
+            : valorPorDefecto;
 
     private async Task<HttpResponseMessage> EnviarAsync(HttpMethod metodo, string url, HttpContent? content, string origen)
     {

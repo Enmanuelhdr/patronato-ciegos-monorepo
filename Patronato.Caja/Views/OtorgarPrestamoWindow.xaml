@@ -1,0 +1,78 @@
+<Window x:Class="Patronato.Caja.Views.OtorgarPrestamoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Otorgar Microcrédito de Emprendimiento" 
+        Height="470" Width="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F8FAFC">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Encabezado -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Otorgar Préstamo de Emprendimiento" FontWeight="Bold" FontSize="16" Foreground="#1E3A8A" />
+            <TextBlock Text="Registra un nuevo microcrédito productivo para un beneficiario invidente con estudio de factibilidad aprobado por el comité social." FontSize="11" Foreground="#64748B" TextWrapping="Wrap" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <!-- Formulario -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Beneficiario Invidente Solicitante:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                <ComboBox x:Name="CmbBeneficiarios" Height="34" Margin="0,0,0,10" DisplayMemberPath="NombreCompleto" />
+
+                <TextBlock Text="Rubro del Microemprendimiento:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                <ComboBox x:Name="CmbRubro" Height="32" SelectedIndex="0" Margin="0,0,0,10">
+                    <ComboBoxItem Content="Colmado / Abarrotes" Tag="1" />
+                    <ComboBoxItem Content="Paletera / Dulces y Refrescos" Tag="2" />
+                    <ComboBoxItem Content="Venta de Ropa de Paca" Tag="3" />
+                    <ComboBoxItem Content="Masajes Itinerantes a Domicilio" Tag="4" />
+                    <ComboBoxItem Content="Elaboración de Detergentes y Suapers" Tag="5" />
+                    <ComboBoxItem Content="Artesanía y Bisutería en Macramé" Tag="9" />
+                    <ComboBoxItem Content="Ventas Diversas" Tag="10" />
+                </ComboBox>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                        <TextBlock Text="Monto Aprobado (RD$):" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                        <TextBox x:Name="TxtMonto" Text="20000.00" FontWeight="Bold" FontSize="13" Style="{StaticResource ModernTextBoxStyle}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                        <TextBlock Text="Plazo de Pago:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                        <ComboBox x:Name="CmbPlazo" Height="32" SelectedIndex="1">
+                            <ComboBoxItem Content="6 Meses" Tag="6" />
+                            <ComboBoxItem Content="12 Meses" Tag="12" />
+                            <ComboBoxItem Content="18 Meses" Tag="18" />
+                            <ComboBoxItem Content="24 Meses" Tag="24" />
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
+
+                <CheckBox x:Name="ChkFamilia" Content="Involucra a núcleo familiar en la operación del negocio" IsChecked="True" FontWeight="SemiBold" FontSize="11" Margin="0,6,0,8" />
+                <CheckBox x:Name="ChkFactibilidad" Content="Estudio socioeconómico y de factibilidad APROBADO" IsChecked="True" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,8" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Botones de Acción -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Aprobar y Otorgar Préstamo" 
+                    Style="{StaticResource SuccessButtonStyle}" 
+                    Width="210" Height="36" 
+                    Margin="0,0,8,0" 
+                    Click="BtnGuardar_Click" />
+            <Button Content="Cancelar" 
+                    Style="{StaticResource ModernButtonStyle}" 
+                    Background="#E2E8F0" Foreground="#334155" 
+                    Width="90" Height="36" 
+                    Click="BtnCancelar_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

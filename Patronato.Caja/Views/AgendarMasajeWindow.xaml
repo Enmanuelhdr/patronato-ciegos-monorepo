@@ -1,0 +1,81 @@
+<Window x:Class="Patronato.Caja.Views.AgendarMasajeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Agendar Nueva Cita de Masaje TACTO" 
+        Height="460" Width="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F8FAFC">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Encabezado -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Agendar Sesión de Masaje TACTO" FontWeight="Bold" FontSize="16" Foreground="#1E3A8A" />
+            <TextBlock Text="Registra una cita previa o cliente en ventanilla para que el terapeuta invidente realice el servicio y luego pueda ser cobrado en Caja." FontSize="11" Foreground="#64748B" TextWrapping="Wrap" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <!-- Formulario -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="Nombre del Cliente:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                <TextBox x:Name="TxtCliente" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
+
+                <TextBlock Text="Teléfono de Contacto:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                <TextBox x:Name="TxtTelefono" Text="809-555-" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
+
+                <TextBlock Text="Terapeuta Masajista Invidente:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                <ComboBox x:Name="CmbMasajista" Height="32" SelectedIndex="0" Margin="0,0,0,10">
+                    <ComboBoxItem Content="David Silverio (Terapeuta Invidente)" />
+                    <ComboBoxItem Content="Claribel Batista (Terapeuta Invidente)" />
+                    <ComboBoxItem Content="José Medina (Terapeuta Invidente)" />
+                    <ComboBoxItem Content="Rosa Castillo (Terapeuta Invidente)" />
+                </ComboBox>
+
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                        <TextBlock Text="Duración:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                        <ComboBox x:Name="CmbDuracion" Height="32" SelectedIndex="1" SelectionChanged="CmbDuracion_SelectionChanged">
+                            <ComboBoxItem Content="30 mins (RD$ 350)" Tag="350" />
+                            <ComboBoxItem Content="45 mins (RD$ 500)" Tag="500" />
+                            <ComboBoxItem Content="60 mins (RD$ 700)" Tag="700" />
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                        <TextBlock Text="Sede / Sucursal:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                        <ComboBox x:Name="CmbSede" Height="32" SelectedIndex="0">
+                            <ComboBoxItem Content="Santo Domingo" Tag="1" />
+                            <ComboBoxItem Content="Santiago" Tag="2" />
+                            <ComboBoxItem Content="Barahona" Tag="3" />
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Text="Tarifa Oficial del Servicio:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                <TextBox x:Name="TxtTarifa" Text="500.00" FontWeight="Bold" FontSize="13" Foreground="#047857" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" IsReadOnly="True" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Botones de Acción -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Agendar Cita" 
+                    Style="{StaticResource SuccessButtonStyle}" 
+                    Width="140" Height="36" 
+                    Margin="0,0,8,0" 
+                    Click="BtnGuardar_Click" />
+            <Button Content="Cancelar" 
+                    Style="{StaticResource ModernButtonStyle}" 
+                    Background="#E2E8F0" Foreground="#334155" 
+                    Width="90" Height="36" 
+                    Click="BtnCancelar_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

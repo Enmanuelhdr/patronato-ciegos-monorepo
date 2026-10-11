@@ -30,7 +30,13 @@ public class ReverseProxyService
 
         proxyRequest.Headers.Accept.Clear();
         proxyRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        proxyRequest.Headers.Add("X-Origen", "Web");
+
+        // La Caja también usa este reenvío genérico para sus consultas de solo lectura
+        // (login, catálogo, listados); distingue el origen real en vez de asumir "Web".
+        var origen = context.Request.Headers.TryGetValue("X-Origen", out var origenHeader) && !string.IsNullOrWhiteSpace(origenHeader)
+            ? origenHeader.ToString()
+            : "Web";
+        proxyRequest.Headers.Add("X-Origen", origen);
 
         using var coreResponse = await _httpClient.SendAsync(
             proxyRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);

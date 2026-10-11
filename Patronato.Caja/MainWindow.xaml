@@ -1,0 +1,813 @@
+<Window x:Class="Patronato.Caja.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Patronato Nacional de Ciegos - Módulo de Caja y Facturación POS" 
+        Height="760" Width="1220"
+        MinHeight="680" MinWidth="1100"
+        WindowStartupLocation="CenterScreen"
+        Background="#F1F5F9">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ========================================================= -->
+        <!-- ENCABEZADO INSTITUCIONAL DE CAJA                          -->
+        <!-- ========================================================= -->
+        <Border Grid.Row="0" Background="#1E3A8A" Padding="18,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Identidad Visual -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#2563EB" CornerRadius="8" Width="44" Height="44" Margin="0,0,12,0">
+                        <TextBlock Text="PNC" Foreground="White" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="PATRONATO NACIONAL DE CIEGOS, INC." Foreground="White" FontWeight="Bold" FontSize="16" />
+                        <TextBlock Text="Módulo Operativo de Caja, Facturación y Arqueo" Foreground="#93C5FD" FontSize="12" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Estado del Cajero y Turno (Compacto y Responsivo) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,0,14,0">
+                    <Border Background="#1E293B" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="👤 " FontSize="11" />
+                            <TextBlock x:Name="TxtInfoCajero" Text="Ana Rosario" Foreground="White" FontWeight="Bold" FontSize="11" MaxWidth="160" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="BadgeRol" Background="#0284C7" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🏷️ " FontSize="11" />
+                            <TextBlock x:Name="TxtInfoRol" Text="Cajero" Foreground="White" FontWeight="Bold" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#1E293B" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📍 " FontSize="11" />
+                            <TextBlock x:Name="TxtInfoSucursal" Text="Santo Domingo" Foreground="White" FontWeight="Bold" FontSize="11" MaxWidth="130" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#1E293B" CornerRadius="6" Padding="8,5">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🕒 " FontSize="11" />
+                            <TextBlock x:Name="TxtInfoHora" Text="12:00:00 PM" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Botón Cerrar Sesión -->
+                <Button Grid.Column="2" 
+                        Content="Cerrar Turno / Salir" 
+                        Height="34" Padding="12,4"
+                        Background="#DC2626" Foreground="White" 
+                        FontWeight="SemiBold" FontSize="12" 
+                        BorderThickness="0"
+                        Click="BtnCerrarSesion_Click"
+                        VerticalAlignment="Center">
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="6" />
+                        </Style>
+                    </Button.Resources>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- ========================================================= -->
+        <!-- PESTAÑAS PRINCIPALES DEL SISTEMA                          -->
+        <!-- ========================================================= -->
+        <TabControl x:Name="MainTabControl" Grid.Row="1" Background="#F8FAFC" BorderThickness="0" Margin="12,8,12,6" SelectionChanged="MainTabControl_SelectionChanged">
+            
+            <!-- ========================================== -->
+            <!-- 1. VENTA DE PRODUCTOS E INSUMOS (POS)      -->
+            <!-- ========================================== -->
+            <TabItem Header="🛒 Venta de Insumos (POS)">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.2*" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- COLUMNA IZQUIERDA: Catálogo de Productos -->
+                    <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,10,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Buscador y Filtro -->
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtBuscarProducto" 
+                                         Style="{StaticResource ModernTextBoxStyle}" 
+                                         Tag="Buscar por código, nombre o categoría..." 
+                                         TextChanged="TxtBuscarProducto_TextChanged" />
+                                <Button Grid.Column="1" 
+                                        Content="Actualizar" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#F1F5F9" Foreground="#334155" 
+                                        BorderBrush="#CBD5E1" BorderThickness="1" 
+                                        Margin="8,0,0,0" 
+                                        Click="BtnActualizarProductos_Click" />
+                            </Grid>
+
+                            <!-- Catálogo DataGrid -->
+                            <DataGrid x:Name="GridProductos" Grid.Row="1" SelectionMode="Single">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Código" Binding="{Binding Codigo}" Width="85" />
+                                    <DataGridTextColumn Header="Artículo / Producto" Binding="{Binding Nombre}" Width="*" />
+                                    <DataGridTextColumn Header="Categoría" Binding="{Binding Categoria}" Width="100" />
+                                    <DataGridTextColumn Header="Precio (RD$)" Binding="{Binding PrecioVenta, StringFormat=N2}" Width="95" />
+                                    <DataGridTextColumn Header="Stock" Binding="{Binding StockDisponible}" Width="65" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <!-- Botón Agregar al Carrito -->
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                <TextBlock Text="Cantidad:" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12" Margin="0,0,8,0" />
+                                <TextBox x:Name="TxtCantidadAgregar" Text="1" Width="50" Height="34" TextAlignment="Center" FontWeight="Bold" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,10,0" />
+                                <Button Content="+ Agregar al Carrito" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#0284C7" 
+                                        Click="BtnAgregarAlCarrito_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- COLUMNA DERECHA: Carrito de Compras y Cobro -->
+                    <Border Grid.Column="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                <Grid Margin="0,0,0,6">
+                                    <TextBlock x:Name="TxtTituloCarrito" Text="Detalle del Carrito / Orden" FontWeight="Bold" FontSize="14" Foreground="#0F172A" />
+                                    <Button Content="Vaciar" 
+                                            HorizontalAlignment="Right" 
+                                            Background="Transparent" Foreground="#DC2626" 
+                                            BorderThickness="0" FontSize="11" FontWeight="SemiBold" 
+                                            Cursor="Hand" Click="BtnVaciarCarrito_Click" />
+                                </Grid>
+
+                                <!-- Bandeja de Órdenes Pendientes de Recepción (Para Cajero y Admin) -->
+                                <Border x:Name="PanelOrdenesPendientes" Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,0,0,4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="📥 Órdenes Pendientes de Recepción:" FontSize="10" FontWeight="Bold" Foreground="#6D28D9" />
+                                            <ComboBox x:Name="CmbOrdenesPendientes" Height="28" Margin="0,2,0,0" DisplayMemberPath="ResumenTexto" ToolTip="Seleccione una orden/cotización generada en recepción para cobrar en caja" />
+                                        </StackPanel>
+                                        <Button x:Name="BtnCargarOrden" Grid.Column="1" Content="Cargar Orden" Style="{StaticResource ModernButtonStyle}" Background="#7C3AED" Foreground="White" Height="28" FontSize="11" Margin="6,12,0,0" Click="BtnCargarOrden_Click" />
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Lista del Carrito -->
+                            <DataGrid x:Name="GridCarrito" Grid.Row="1">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Artículo" Binding="{Binding Nombre}" Width="*" />
+                                    <DataGridTextColumn Header="Cant" Binding="{Binding Cantidad}" Width="45" />
+                                    <DataGridTextColumn Header="P. Unit" Binding="{Binding PrecioUnitario, StringFormat=N2}" Width="75" />
+                                    <DataGridTextColumn Header="Subtotal" Binding="{Binding Subtotal, StringFormat=N2}" Width="85" />
+                                    <DataGridTemplateColumn Width="40">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="✕" 
+                                                        Foreground="#DC2626" Background="Transparent" 
+                                                        BorderThickness="0" FontWeight="Bold" 
+                                                        Click="BtnQuitarItemCarrito_Click" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <!-- Panel de Pago y Cobro -->
+                            <StackPanel Grid.Row="2" Margin="0,12,0,0">
+                                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <!-- Cliente / RNC con Autocompletado -->
+                                        <Grid Margin="0,0,0,3">
+                                            <TextBlock Text="Cliente / RNC:" FontSize="11" Foreground="#475569" />
+                                            <Button Content="Consumidor Final (Express)" HorizontalAlignment="Right" Background="Transparent" Foreground="#0284C7" BorderThickness="0" FontSize="10" FontWeight="SemiBold" Cursor="Hand" Click="BtnClienteExpress_Click" ToolTip="Seleccionar Consumidor Final (Cliente Express)" />
+                                        </Grid>
+                                        <ComboBox x:Name="CmbClientesFrecuentes" IsEditable="True" Height="30" Margin="0,0,0,8" ToolTip="Escriba o seleccione un cliente frecuente o beneficiario" />
+
+                                        <!-- Panel de Método de Pago y Devuelta (Cajero y Admin) -->
+                                        <StackPanel x:Name="PanelCobroEfectivo">
+                                            <!-- Método de Pago -->
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                                    <TextBlock Text="Método de Pago:" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                                    <ComboBox x:Name="CmbMetodoPagoVenta" Height="30" SelectedIndex="0" SelectionChanged="CmbMetodoPagoVenta_SelectionChanged">
+                                                        <ComboBoxItem Content="Efectivo" />
+                                                        <ComboBoxItem Content="Tarjeta" />
+                                                        <ComboBoxItem Content="Transferencia" />
+                                                    </ComboBox>
+                                                </StackPanel>
+                                                <StackPanel x:Name="PanelMontoRecibidoVenta" Grid.Column="1" Margin="4,0,0,0">
+                                                    <TextBlock Text="Monto Recibido (RD$):" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                                    <TextBox x:Name="TxtMontoRecibidoVenta" Text="0.00" Style="{StaticResource ModernTextBoxStyle}" Height="30" TextChanged="TxtMontoRecibidoVenta_TextChanged" />
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <!-- Devuelta / Cambio -->
+                                            <Grid x:Name="PanelDevueltaVenta" Margin="0,2,0,4">
+                                                <TextBlock Text="Cambio / Devuelta:" FontSize="12" FontWeight="SemiBold" Foreground="#475569" />
+                                                <TextBlock x:Name="TxtDevueltaVenta" Text="RD$ 0.00" HorizontalAlignment="Right" FontWeight="Bold" FontSize="13" Foreground="#059669" />
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <!-- Panel Informativo para Recepción -->
+                                        <Border x:Name="PanelInfoRecepcion" Background="#EDE9FE" CornerRadius="4" Padding="8,6" Margin="0,4,0,2" Visibility="Collapsed">
+                                            <TextBlock Text="ℹ️ Como Recepcionista, generas la orden de pedido o cotización. El cliente pasará a ventanilla de Caja a realizar el pago." FontSize="11" Foreground="#6D28D9" TextWrapping="Wrap" />
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Total a Cobrar -->
+                                <Border Background="#1E3A8A" CornerRadius="6" Padding="14,10" Margin="0,0,0,10">
+                                    <Grid>
+                                        <TextBlock x:Name="LblTotalTitulo" Text="TOTAL A COBRAR:" Foreground="#93C5FD" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" />
+                                        <TextBlock x:Name="TxtTotalCarrito" Text="RD$ 0.00" Foreground="White" FontWeight="Bold" FontSize="20" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Botón Principal de Cobro (Cajero / Admin) -->
+                                <Button x:Name="BtnCobrarVenta" 
+                                        Content="💳 Cobrar e Imprimir Recibo" 
+                                        Style="{StaticResource SuccessButtonStyle}" 
+                                        Click="BtnCobrarVenta_Click" />
+
+                                <!-- Botón Generar Orden (Recepcionista) -->
+                                <Button x:Name="BtnGenerarOrdenVenta" 
+                                        Content="📋 Generar Orden de Cobro para Caja" 
+                                        Background="#7C3AED" Foreground="White" 
+                                        FontWeight="Bold" FontSize="13" Height="42"
+                                        BorderThickness="0"
+                                        Click="BtnGenerarOrdenVenta_Click" 
+                                        Visibility="Collapsed">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="6" />
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
+            <!-- 2. MASAJES TACTO                          -->
+            <!-- ========================================== -->
+            <TabItem Header="💆 Masajes TACTO">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Banner Informativo -->
+                    <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="Módulo TACTO - Masajes Terapéuticos por Invidentes" FontWeight="Bold" FontSize="13" Foreground="#1E3A8A" />
+                                <TextBlock Text="Cobra las sesiones realizadas por los terapeutas invidentes capacitados en el Patronato. Al cobrar, se actualiza el estado en el Core y se emite el comprobante de pago." FontSize="11" Foreground="#3B82F6" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Content="Actualizar Pendientes" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#F1F5F9" Foreground="#334155"
+                                        BorderBrush="#CBD5E1" BorderThickness="1"
+                                        Height="32" FontSize="11"
+                                        Margin="0,0,8,0"
+                                        Click="BtnActualizarMasajes_Click" />
+                                <Button Content="+ Agendar Cita TACTO" 
+                                        Style="{StaticResource SuccessButtonStyle}" 
+                                        Height="32" FontSize="11"
+                                        Click="BtnAbrirAgendarMasaje_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Tabla de Masajes Pendientes -->
+                    <DataGrid x:Name="GridMasajes" Grid.Row="1" SelectionChanged="GridMasajes_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No. Cita" Binding="{Binding Id}" Width="70" />
+                            <DataGridTextColumn Header="Cliente" Binding="{Binding NombreCliente}" Width="*" />
+                            <DataGridTextColumn Header="Teléfono" Binding="{Binding TelefonoCliente}" Width="120" />
+                            <DataGridTextColumn Header="Masajista Asignado" Binding="{Binding NombreMasajista}" Width="*" />
+                            <DataGridTextColumn Header="Duración" Binding="{Binding DuracionMinutos, StringFormat={}{0} mins}" Width="90" />
+                            <DataGridTextColumn Header="Fecha / Hora" Binding="{Binding FechaHora, StringFormat=dd/MM/yyyy hh:mm tt}" Width="150" />
+                            <DataGridTextColumn Header="Tarifa (RD$)" Binding="{Binding PrecioTarifa, StringFormat=N2}" Width="110" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Panel de Cobro del Masaje Seleccionado -->
+                    <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.5*" />
+                                <ColumnDefinition Width="1*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Datos de la Cita Seleccionada -->
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Sesión Seleccionada:" FontSize="11" Foreground="#64748B" />
+                                <TextBlock x:Name="TxtDetalleMasajeSeleccionado" Text="Selecciona una cita de la lista superior para cobrar" FontWeight="Bold" FontSize="13" Foreground="#0F172A" Margin="0,2,0,4" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Tarifa Oficial: " FontSize="12" Foreground="#475569" />
+                                    <TextBlock x:Name="TxtTarifaMasaje" Text="RD$ 0.00" FontWeight="Bold" FontSize="14" Foreground="#1E3A8A" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Parámetros de Pago -->
+                            <Grid Grid.Column="1" Margin="16,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="Método de Pago:" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                    <ComboBox x:Name="CmbMetodoPagoMasaje" Height="30" SelectedIndex="0" SelectionChanged="CmbMetodoPagoMasaje_SelectionChanged">
+                                        <ComboBoxItem Content="Efectivo" />
+                                        <ComboBoxItem Content="Tarjeta" />
+                                        <ComboBoxItem Content="Transferencia" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel x:Name="PanelMontoRecibidoMasaje" Grid.Column="1" Margin="4,0,0,0">
+                                    <TextBlock Text="Monto Recibido:" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                    <TextBox x:Name="TxtMontoRecibidoMasaje" Text="0.00" Style="{StaticResource ModernTextBoxStyle}" Height="30" TextChanged="TxtMontoRecibidoMasaje_TextChanged" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Botón Cobrar -->
+                            <Button x:Name="BtnCobrarMasaje" 
+                                    Grid.Column="2" 
+                                    Content="💆 Cobrar Sesión y Generar Recibo" 
+                                    Style="{StaticResource SuccessButtonStyle}" 
+                                    Width="260" Height="44"
+                                    IsEnabled="False"
+                                    Click="BtnCobrarMasaje_Click" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
+            <!-- 3. ABONO A PRÉSTAMOS DE EMPRENDIMIENTO    -->
+            <!-- ========================================== -->
+            <TabItem Header="💳 Abono a Préstamos">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Buscador de Beneficiario / Préstamo -->
+                    <Border Grid.Row="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                        <StackPanel>
+                            <!-- Banner Informativo para Recepción -->
+                            <Border x:Name="PanelInfoPrestamosRecepcion" Background="#EDE9FE" CornerRadius="4" Padding="10,6" Margin="0,0,0,8" Visibility="Collapsed">
+                                <TextBlock Text="ℹ️ Modo Consulta de Saldos: En Recepción se orienta a los beneficiarios sobre sus cuotas y balances pendientes. Los abonos se cobran en ventanilla de Caja y las solicitudes de préstamos se realizan desde la Web institucional para evaluación de la Administración." FontSize="11" Foreground="#6D28D9" TextWrapping="Wrap" />
+                            </Border>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Buscar Beneficiario (Cédula o Nombre):" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <TextBox x:Name="TxtBuscarPrestamo" Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" TextChanged="TxtBuscarPrestamo_TextChanged" />
+                                <Button Grid.Column="2" Content="Buscar" Style="{StaticResource ModernButtonStyle}" Background="#F1F5F9" Foreground="#334155" BorderBrush="#CBD5E1" BorderThickness="1" Margin="8,0,0,0" Width="80" Height="32" Click="BtnBuscarPrestamo_Click" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Lista de Préstamos Activos -->
+                    <DataGrid x:Name="GridPrestamos" Grid.Row="1" SelectionChanged="GridPrestamos_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No. Préstamo" Binding="{Binding Id}" Width="90" />
+                            <DataGridTextColumn Header="Beneficiario Invidente" Binding="{Binding Beneficiario.NombreCompleto}" Width="*" />
+                            <DataGridTextColumn Header="Cédula" Binding="{Binding Beneficiario.Cedula}" Width="130" />
+                            <DataGridTextColumn Header="Rubro del Negocio" Binding="{Binding RubroTexto}" Width="160" />
+                            <DataGridTextColumn Header="Monto Otorgado" Binding="{Binding MontoAprobado, StringFormat=RD$ {0:N2}}" Width="130" />
+                            <DataGridTextColumn Header="Saldo Pendiente" Binding="{Binding SaldoPendiente, StringFormat=RD$ {0:N2}}" Width="140" />
+                            <DataGridTextColumn Header="Estado" Binding="{Binding EstadoTexto}" Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Panel de Registro de Abono -->
+                    <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.5*" />
+                                <ColumnDefinition Width="1*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Detalle del Préstamo -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Préstamo Seleccionado:" FontSize="11" Foreground="#64748B" />
+                                <TextBlock x:Name="TxtDetallePrestamo" Text="Selecciona un préstamo activo de la lista" FontWeight="Bold" FontSize="13" Foreground="#0F172A" Margin="0,2,0,4" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Saldo Actual: " FontSize="12" Foreground="#475569" />
+                                    <TextBlock x:Name="TxtSaldoActual" Text="RD$ 0.00" FontWeight="Bold" FontSize="13" Foreground="#DC2626" Margin="0,0,16,0" />
+                                    <TextBlock Text="Nuevo Saldo Estimado: " FontSize="12" Foreground="#475569" />
+                                    <TextBlock x:Name="TxtNuevoSaldoEstimado" Text="RD$ 0.00" FontWeight="Bold" FontSize="13" Foreground="#059669" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Cuota y Pago -->
+                            <Grid Grid.Column="1" Margin="14,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="Monto a Abonar (RD$):" FontSize="11" FontWeight="SemiBold" Foreground="#1E3A8A" Margin="0,0,0,3" />
+                                    <TextBox x:Name="TxtMontoAbono" Text="0.00" Style="{StaticResource ModernTextBoxStyle}" Height="30" TextChanged="TxtMontoAbono_TextChanged" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                    <TextBlock Text="Método de Pago:" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                    <ComboBox x:Name="CmbMetodoPagoPrestamo" Height="30" SelectedIndex="0">
+                                        <ComboBoxItem Content="Efectivo" />
+                                        <ComboBoxItem Content="Tarjeta" />
+                                        <ComboBoxItem Content="Transferencia" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Botón Aplicar Abono -->
+                            <Button x:Name="BtnAplicarAbono" 
+                                    Grid.Column="2" 
+                                    Content="💳 Aplicar Abono a Préstamo" 
+                                    Style="{StaticResource SuccessButtonStyle}" 
+                                    Width="240" Height="44"
+                                    IsEnabled="False"
+                                    Click="BtnAplicarAbono_Click" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
+            <!-- 4. DONACIONES EN VENTANILLA               -->
+            <!-- ========================================== -->
+            <TabItem x:Name="TabDonaciones" Header="🎁 Donaciones">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.2*" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Formulario de Donación -->
+                    <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="24" Margin="0,0,12,0">
+                        <StackPanel>
+                            <TextBlock Text="Recepción de Donación en Ventanilla" FontWeight="Bold" FontSize="16" Foreground="#0F172A" />
+                            <TextBlock Text="Registra aportes solidarios recibidos en la sede institucional para sostener los talleres de Braille, movilidad y masajes." FontSize="12" Foreground="#64748B" Margin="0,4,0,18" />
+
+                            <!-- Donante con Autocompletado -->
+                            <Grid Margin="0,0,0,3">
+                                <TextBlock Text="Nombre del Donante o Empresa Benefactora:" FontSize="12" FontWeight="SemiBold" Foreground="#334155" />
+                                <Button Content="Donante Anónimo (Express)" HorizontalAlignment="Right" Background="Transparent" Foreground="#0284C7" BorderThickness="0" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Click="BtnDonanteAnonimo_Click" ToolTip="Seleccionar Donante Anónimo" />
+                            </Grid>
+                            <ComboBox x:Name="CmbDonantesFrecuentes" IsEditable="True" Height="32" Margin="0,0,0,14" SelectionChanged="CmbDonantesFrecuentes_SelectionChanged" ToolTip="Escriba o seleccione un donante registrado o frecuente" />
+
+                            <!-- Cédula o RNC -->
+                            <TextBlock Text="Cédula o RNC del Donante:" FontSize="12" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                            <TextBox x:Name="TxtDonanteRnc" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,14" />
+
+                            <!-- Monto y Método -->
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                    <TextBlock Text="Monto de la Donación (RD$):" FontSize="12" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                    <TextBox x:Name="TxtMontoDonacion" Text="1000.00" Style="{StaticResource ModernTextBoxStyle}" FontWeight="Bold" FontSize="14" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                    <TextBlock Text="Método de Pago:" FontSize="12" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                    <ComboBox x:Name="CmbMetodoPagoDonacion" Height="34" SelectedIndex="0">
+                                        <ComboBoxItem Content="Efectivo" />
+                                        <ComboBoxItem Content="Tarjeta" />
+                                        <ComboBoxItem Content="Transferencia" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- NCF Checkbox -->
+                            <CheckBox x:Name="ChkRequiereNcf" Content="Requiere Comprobante Fiscal Dominicano (NCF de Donación)" FontWeight="SemiBold" FontSize="12" Margin="0,4,0,20" />
+
+                            <!-- Botón Registrar -->
+                            <Button x:Name="BtnRegistrarDonacion" 
+                                    Content="🎁 Registrar Donación y Emitir Recibo Oficial" 
+                                    Style="{StaticResource SuccessButtonStyle}" 
+                                    Height="46" FontSize="14"
+                                    Click="BtnRegistrarDonacion_Click" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Tarjeta Informativa / Destino de Donaciones -->
+                    <Border Grid.Column="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="20">
+                        <StackPanel>
+                            <TextBlock Text="Impacto de cada Donación" FontWeight="Bold" FontSize="14" Foreground="#1E3A8A" Margin="0,0,0,12" />
+                            
+                            <Border Background="White" CornerRadius="6" Padding="12" Margin="0,0,0,10" BorderBrush="#E2E8F0" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="🦯 Bastones para Invidentes" FontWeight="SemiBold" FontSize="12" Foreground="#0F172A" />
+                                    <TextBlock Text="Permite donar bastones blancos plegables a beneficiarios de escasos recursos económicos." FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" CornerRadius="6" Padding="12" Margin="0,0,0,10" BorderBrush="#E2E8F0" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="📚 Talleres de Braille y Tecnología" FontWeight="SemiBold" FontSize="12" Foreground="#0F172A" />
+                                    <TextBlock Text="Financia materiales de lectura braille y software parlante para rehabilitación laboral." FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="White" CornerRadius="6" Padding="12" BorderBrush="#E2E8F0" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="👁️ Prevención de Ceguera" FontWeight="SemiBold" FontSize="12" Foreground="#0F172A" />
+                                    <TextBlock Text="Consultas oftalmológicas gratuitas en operativos móviles a nivel nacional." FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
+            <!-- 5. ARQUEO Y CIERRE DE CAJA                -->
+            <!-- ========================================== -->
+            <TabItem x:Name="TabArqueoCaja" Header="📊 Arqueo y Cierre">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- TARJETAS DE MÉTRICAS DEL TURNO -->
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Card 1: Total Recaudado -->
+                        <Border Grid.Column="0" Background="#1E3A8A" CornerRadius="8" Padding="14" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="TOTAL RECAUDADO" Foreground="#93C5FD" FontSize="11" FontWeight="Bold" />
+                                <TextBlock x:Name="TxtKpiTotalGeneral" Text="RD$ 0.00" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,4,0,2" />
+                                <TextBlock x:Name="TxtKpiCantidadTx" Text="0 transacciones registradas" Foreground="#BFDBFE" FontSize="11" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Card 2: Por Método de Pago -->
+                        <Border Grid.Column="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="3,0,3,0">
+                            <StackPanel>
+                                <TextBlock Text="POR MÉTODO DE PAGO" Foreground="#64748B" FontSize="10" FontWeight="Bold" />
+                                <Grid Margin="0,4,0,0">
+                                    <TextBlock Text="Efectivo:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiEfectivo" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#047857" />
+                                </Grid>
+                                <Grid Margin="0,2,0,0">
+                                    <TextBlock Text="Tarjeta:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiTarjeta" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#0284C7" />
+                                </Grid>
+                                <Grid Margin="0,2,0,0">
+                                    <TextBlock Text="Transferencia:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiTransferencia" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#7C3AED" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Card 3: Por Concepto -->
+                        <Border Grid.Column="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="3,0,3,0">
+                            <StackPanel>
+                                <TextBlock Text="POR CONCEPTO" Foreground="#64748B" FontSize="10" FontWeight="Bold" />
+                                <Grid Margin="0,4,0,0">
+                                    <TextBlock Text="Ventas POS:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiVentas" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid Margin="0,2,0,0">
+                                    <TextBlock Text="Masajes TACTO:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiMasajes" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid Margin="0,2,0,0">
+                                    <TextBlock Text="Abonos Préstamos:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiPrestamos" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid Margin="0,2,0,0">
+                                    <TextBlock Text="Donaciones:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiDonaciones" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Card 4: Acciones de Arqueo -->
+                        <Border Grid.Column="3" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="6,0,0,0">
+                            <StackPanel VerticalAlignment="Center">
+                                <Button Content="🔄 Actualizar Arqueo" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#0284C7" Margin="0,0,0,8" 
+                                        Click="BtnActualizarArqueo_Click" />
+                                <Button Content="🖨️ Emitir Cierre de Caja" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#0F172A" 
+                                        Click="BtnImprimirCierre_Click" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- TABLA DE MOVIMIENTOS DEL TURNO -->
+                    <DataGrid x:Name="GridMovimientosTurno" Grid.Row="1">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Hora" Binding="{Binding FechaHora, StringFormat=hh:mm tt}" Width="80" />
+                            <DataGridTextColumn Header="No. Recibo" Binding="{Binding NumeroRecibo}" Width="150" />
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding TipoTransaccion}" Width="120" />
+                            <DataGridTextColumn Header="Concepto" Binding="{Binding Concepto}" Width="*" />
+                            <DataGridTextColumn Header="Cliente / Beneficiario" Binding="{Binding ClienteOBeneficiario}" Width="160" />
+                            <DataGridTextColumn Header="Método" Binding="{Binding MetodoPago}" Width="90" />
+                            <DataGridTextColumn Header="Monto (RD$)" Binding="{Binding MontoTotal, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Cajero" Binding="{Binding Cajero}" Width="100" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <TextBlock Grid.Row="2" Text="* Este reporte refleja en vivo las transacciones auditadas en la base de datos de Patronato.Core." FontSize="11" Foreground="#64748B" Margin="0,8,0,0" />
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
+            <!-- 6. HISTORIAL Y REIMPRESIÓN DE RECIBOS     -->
+            <!-- ========================================== -->
+            <TabItem x:Name="TabRecibos" Header="🧾 Recibos">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Barra de Búsqueda -->
+                    <Border Grid.Row="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Buscar por Recibo o Cliente:" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <TextBox x:Name="TxtBuscarRecibo" Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" TextChanged="TxtBuscarRecibo_TextChanged" />
+                            <Button Grid.Column="2" 
+                                    Content="Ver / Reimprimir Recibo" 
+                                    Style="{StaticResource ModernButtonStyle}" 
+                                    Background="#0284C7" Margin="10,0,0,0" 
+                                    Click="BtnReimprimirRecibo_Click" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Grilla de Recibos -->
+                    <DataGrid x:Name="GridRecibos" Grid.Row="1" MouseDoubleClick="GridRecibos_MouseDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No. Recibo" Binding="{Binding NumeroRecibo}" Width="160" />
+                            <DataGridTextColumn Header="Fecha / Hora" Binding="{Binding FechaHora, StringFormat=dd/MM/yyyy hh:mm tt}" Width="150" />
+                            <DataGridTextColumn Header="Operación" Binding="{Binding TipoTransaccion}" Width="130" />
+                            <DataGridTextColumn Header="Cliente / Beneficiario" Binding="{Binding ClienteOBeneficiario}" Width="*" />
+                            <DataGridTextColumn Header="Total (RD$)" Binding="{Binding MontoTotal, StringFormat=N2}" Width="100" />
+                            <DataGridTextColumn Header="Método" Binding="{Binding MetodoPago}" Width="90" />
+                            <DataGridTextColumn Header="Cajero" Binding="{Binding Cajero}" Width="120" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
+            <!-- 7. GESTIÓN DE CAJEROS (SOLO ADMINISTRADOR) -->
+            <!-- ========================================== -->
+            <TabItem x:Name="TabGestionCajeros" Header="👥 Gestión de Cajeros (Admin)">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.3*" />
+                        <ColumnDefinition Width="1*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Lista de Empleados / Cajeros -->
+                    <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,12,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
+                                <TextBlock Text="Cajeros y Empleados del Sistema" FontWeight="Bold" FontSize="14" Foreground="#0F172A" />
+                                <Button Content="Actualizar" HorizontalAlignment="Right" Style="{StaticResource ModernButtonStyle}" Background="#F1F5F9" Foreground="#334155" BorderBrush="#CBD5E1" BorderThickness="1" Height="28" FontSize="11" Click="BtnActualizarUsuariosAdmin_Click" />
+                            </Grid>
+
+                            <DataGrid x:Name="GridUsuariosAdmin" Grid.Row="1">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="40" />
+                                    <DataGridTextColumn Header="Nombre Completo" Binding="{Binding NombreCompleto}" Width="*" />
+                                    <DataGridTextColumn Header="Usuario" Binding="{Binding NombreUsuario}" Width="90" />
+                                    <DataGridTextColumn Header="Rol" Binding="{Binding RolTexto}" Width="110" />
+                                    <DataGridTextColumn Header="Sede" Binding="{Binding SucursalTexto}" Width="140" />
+                                    <DataGridCheckBoxColumn Header="Activo" Binding="{Binding Activo}" Width="50" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Formulario de Registro de Nuevo Cajero -->
+                    <Border Grid.Column="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="20">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Dar de Alta a Personal (Cajero / Recepción)" FontWeight="Bold" FontSize="15" Foreground="#1E3A8A" />
+                                <TextBlock Text="Crea credenciales oficiales para empleados de la institución. Los usuarios creados podrán acceder de inmediato según su rol." FontSize="11" Foreground="#64748B" Margin="0,4,0,16" TextWrapping="Wrap" />
+
+                                <TextBlock Text="Nombre Completo del Empleado:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                <TextBox x:Name="TxtNuevoNombreCompleto" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
+
+                                <TextBlock Text="Nombre de Usuario (Login):" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                <TextBox x:Name="TxtNuevoUsuario" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
+
+                                <TextBlock Text="Rol Asignado:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                <ComboBox x:Name="CmbNuevoRol" Height="34" SelectedIndex="0" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="Cajero (Ventanilla de Cobro y Facturación)" Tag="2" />
+                                    <ComboBoxItem Content="Recepcionista (Atención, Órdenes y Citas)" Tag="5" />
+                                </ComboBox>
+
+                                <TextBlock Text="Correo Institucional:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                <TextBox x:Name="TxtNuevoCorreo" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
+
+                                <TextBlock Text="Contraseña Inicial:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                <TextBox x:Name="TxtNuevoPassword" Text="cajero123" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
+
+                                <TextBlock Text="Sucursal Asignada:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
+                                <ComboBox x:Name="CmbNuevaSucursal" Height="34" SelectedIndex="0" Margin="0,0,0,18">
+                                    <ComboBoxItem Content="Sede Central Santo Domingo" Tag="1" />
+                                    <ComboBoxItem Content="Regional Norte Santiago" Tag="2" />
+                                    <ComboBoxItem Content="Regional Sur Barahona" Tag="3" />
+                                </ComboBox>
+
+                                <Button x:Name="BtnRegistrarCajero" 
+                                        Content="👤 Registrar Nuevo Empleado" 
+                                        Style="{StaticResource SuccessButtonStyle}" 
+                                        Click="BtnRegistrarCajero_Click" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- ========================================================= -->
+        <!-- BARRA DE ESTADO INFERIOR                                  -->
+        <!-- ========================================================= -->
+        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="14,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TxtEstadoGlobal" Text="Sistema listo para operar." FontSize="11" Foreground="#475569" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="Patronato Nacional de Ciegos • v1.0.0 (WPF .NET 10)" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
