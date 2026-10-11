@@ -28,9 +28,18 @@ namespace Patronato.Caja.Services
         public JsonElement? Datos { get; set; }
     }
 
+    // Se lanza únicamente cuando la Caja no logró ni conectar con el Gateway (línea caída),
+    // nunca cuando el Gateway respondió algo (aunque sea un rechazo de negocio). Es la señal
+    // que usa ApiService para decidir si debe encolar la operación localmente (ver
+    // OfflineQueueService) en vez de tratarla como un error normal.
+    public class GatewayNoDisponibleException : Exception
+    {
+        public GatewayNoDisponibleException(string mensaje, Exception? inner = null) : base(mensaje, inner) { }
+    }
+
     // Cliente de la entrada por socket del Gateway (ver Patronato.Gateway.Sockets.CajaSocketServer).
-    // Toda operación que mueve dinero (cobros, abonos, ventas, donaciones) viaja por aquí usando
-    // un código de transacción, igual que la Web lo hace vía REST (/api/gateway/transaccion).
+    // Toda operación de la Caja —consultas y cobros— viaja por aquí usando un código de
+    // transacción, igual que la Web lo hace vía REST (/api/gateway/transaccion).
     public class GatewaySocketClient
     {
         private static readonly UTF8Encoding Utf8SinBom = new(encoderShouldEmitUTF8Identifier: false);
@@ -49,10 +58,17 @@ namespace Patronato.Caja.Services
             var (host, port) = SessionManager.GetGatewaySocketEndpoint();
 
             using var client = new TcpClient();
-            var conexion = client.ConnectAsync(host, port);
-            if (await Task.WhenAny(conexion, Task.Delay(TimeSpan.FromSeconds(5))) != conexion)
-                throw new TimeoutException($"No se pudo conectar al Gateway ({host}:{port}).");
-            await conexion;
+            try
+            {
+                var conexion = client.ConnectAsync(host, port);
+                if (await Task.WhenAny(conexion, Task.Delay(TimeSpan.FromSeconds(3))) != conexion)
+                    throw new GatewayNoDisponibleException($"Tiempo de espera agotado conectando al Gateway ({host}:{port}).");
+                await conexion;
+            }
+            catch (SocketException ex)
+            {
+                throw new GatewayNoDisponibleException($"No se pudo conectar al Gateway ({host}:{port}): {ex.Message}", ex);
+            }
 
             using var stream = client.GetStream();
             using var writer = new StreamWriter(stream, Utf8SinBom) { AutoFlush = true };

@@ -241,11 +241,6 @@
                                                 <TextBlock x:Name="TxtDevueltaVenta" Text="RD$ 0.00" HorizontalAlignment="Right" FontWeight="Bold" FontSize="13" Foreground="#059669" />
                                             </Grid>
                                         </StackPanel>
-
-                                        <!-- Panel Informativo para Recepción -->
-                                        <Border x:Name="PanelInfoRecepcion" Background="#EDE9FE" CornerRadius="4" Padding="8,6" Margin="0,4,0,2" Visibility="Collapsed">
-                                            <TextBlock Text="ℹ️ Como Recepcionista, generas la orden de pedido o cotización. El cliente pasará a ventanilla de Caja a realizar el pago." FontSize="11" Foreground="#6D28D9" TextWrapping="Wrap" />
-                                        </Border>
                                     </StackPanel>
                                 </Border>
 
@@ -258,25 +253,10 @@
                                 </Border>
 
                                 <!-- Botón Principal de Cobro (Cajero / Admin) -->
-                                <Button x:Name="BtnCobrarVenta" 
-                                        Content="💳 Cobrar e Imprimir Recibo" 
-                                        Style="{StaticResource SuccessButtonStyle}" 
+                                <Button x:Name="BtnCobrarVenta"
+                                        Content="💳 Cobrar e Imprimir Recibo"
+                                        Style="{StaticResource SuccessButtonStyle}"
                                         Click="BtnCobrarVenta_Click" />
-
-                                <!-- Botón Generar Orden (Recepcionista) -->
-                                <Button x:Name="BtnGenerarOrdenVenta" 
-                                        Content="📋 Generar Orden de Cobro para Caja" 
-                                        Background="#7C3AED" Foreground="White" 
-                                        FontWeight="Bold" FontSize="13" Height="42"
-                                        BorderThickness="0"
-                                        Click="BtnGenerarOrdenVenta_Click" 
-                                        Visibility="Collapsed">
-                                    <Button.Resources>
-                                        <Style TargetType="Border">
-                                            <Setter Property="CornerRadius" Value="6" />
-                                        </Style>
-                                    </Button.Resources>
-                                </Button>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -302,17 +282,12 @@
                                 <TextBlock Text="Cobra las sesiones realizadas por los terapeutas invidentes capacitados en el Patronato. Al cobrar, se actualiza el estado en el Core y se emite el comprobante de pago." FontSize="11" Foreground="#3B82F6" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <Button Content="Actualizar Pendientes" 
-                                        Style="{StaticResource ModernButtonStyle}" 
+                                <Button Content="Actualizar Pendientes"
+                                        Style="{StaticResource ModernButtonStyle}"
                                         Background="#F1F5F9" Foreground="#334155"
                                         BorderBrush="#CBD5E1" BorderThickness="1"
                                         Height="32" FontSize="11"
-                                        Margin="0,0,8,0"
                                         Click="BtnActualizarMasajes_Click" />
-                                <Button Content="+ Agendar Cita TACTO" 
-                                        Style="{StaticResource SuccessButtonStyle}" 
-                                        Height="32" FontSize="11"
-                                        Click="BtnAbrirAgendarMasaje_Click" />
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -396,11 +371,6 @@
                     <!-- Buscador de Beneficiario / Préstamo -->
                     <Border Grid.Row="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
                         <StackPanel>
-                            <!-- Banner Informativo para Recepción -->
-                            <Border x:Name="PanelInfoPrestamosRecepcion" Background="#EDE9FE" CornerRadius="4" Padding="10,6" Margin="0,0,0,8" Visibility="Collapsed">
-                                <TextBlock Text="ℹ️ Modo Consulta de Saldos: En Recepción se orienta a los beneficiarios sobre sus cuotas y balances pendientes. Los abonos se cobran en ventanilla de Caja y las solicitudes de préstamos se realizan desde la Web institucional para evaluación de la Administración." FontSize="11" Foreground="#6D28D9" TextWrapping="Wrap" />
-                            </Border>
-
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -717,83 +687,6 @@
                 </Grid>
             </TabItem>
 
-            <!-- ========================================== -->
-            <!-- 7. GESTIÓN DE CAJEROS (SOLO ADMINISTRADOR) -->
-            <!-- ========================================== -->
-            <TabItem x:Name="TabGestionCajeros" Header="👥 Gestión de Cajeros (Admin)">
-                <Grid Margin="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.3*" />
-                        <ColumnDefinition Width="1*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Lista de Empleados / Cajeros -->
-                    <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,12,0">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <Grid Grid.Row="0" Margin="0,0,0,10">
-                                <TextBlock Text="Cajeros y Empleados del Sistema" FontWeight="Bold" FontSize="14" Foreground="#0F172A" />
-                                <Button Content="Actualizar" HorizontalAlignment="Right" Style="{StaticResource ModernButtonStyle}" Background="#F1F5F9" Foreground="#334155" BorderBrush="#CBD5E1" BorderThickness="1" Height="28" FontSize="11" Click="BtnActualizarUsuariosAdmin_Click" />
-                            </Grid>
-
-                            <DataGrid x:Name="GridUsuariosAdmin" Grid.Row="1">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="40" />
-                                    <DataGridTextColumn Header="Nombre Completo" Binding="{Binding NombreCompleto}" Width="*" />
-                                    <DataGridTextColumn Header="Usuario" Binding="{Binding NombreUsuario}" Width="90" />
-                                    <DataGridTextColumn Header="Rol" Binding="{Binding RolTexto}" Width="110" />
-                                    <DataGridTextColumn Header="Sede" Binding="{Binding SucursalTexto}" Width="140" />
-                                    <DataGridCheckBoxColumn Header="Activo" Binding="{Binding Activo}" Width="50" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </Border>
-
-                    <!-- Formulario de Registro de Nuevo Cajero -->
-                    <Border Grid.Column="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="20">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <StackPanel>
-                                <TextBlock Text="Dar de Alta a Personal (Cajero / Recepción)" FontWeight="Bold" FontSize="15" Foreground="#1E3A8A" />
-                                <TextBlock Text="Crea credenciales oficiales para empleados de la institución. Los usuarios creados podrán acceder de inmediato según su rol." FontSize="11" Foreground="#64748B" Margin="0,4,0,16" TextWrapping="Wrap" />
-
-                                <TextBlock Text="Nombre Completo del Empleado:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                                <TextBox x:Name="TxtNuevoNombreCompleto" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
-
-                                <TextBlock Text="Nombre de Usuario (Login):" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                                <TextBox x:Name="TxtNuevoUsuario" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
-
-                                <TextBlock Text="Rol Asignado:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                                <ComboBox x:Name="CmbNuevoRol" Height="34" SelectedIndex="0" Margin="0,0,0,10">
-                                    <ComboBoxItem Content="Cajero (Ventanilla de Cobro y Facturación)" Tag="2" />
-                                    <ComboBoxItem Content="Recepcionista (Atención, Órdenes y Citas)" Tag="5" />
-                                </ComboBox>
-
-                                <TextBlock Text="Correo Institucional:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                                <TextBox x:Name="TxtNuevoCorreo" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
-
-                                <TextBlock Text="Contraseña Inicial:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                                <TextBox x:Name="TxtNuevoPassword" Text="cajero123" Style="{StaticResource ModernTextBoxStyle}" Margin="0,0,0,10" />
-
-                                <TextBlock Text="Sucursal Asignada:" FontSize="11" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                                <ComboBox x:Name="CmbNuevaSucursal" Height="34" SelectedIndex="0" Margin="0,0,0,18">
-                                    <ComboBoxItem Content="Sede Central Santo Domingo" Tag="1" />
-                                    <ComboBoxItem Content="Regional Norte Santiago" Tag="2" />
-                                    <ComboBoxItem Content="Regional Sur Barahona" Tag="3" />
-                                </ComboBox>
-
-                                <Button x:Name="BtnRegistrarCajero" 
-                                        Content="👤 Registrar Nuevo Empleado" 
-                                        Style="{StaticResource SuccessButtonStyle}" 
-                                        Click="BtnRegistrarCajero_Click" />
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Border>
-                </Grid>
-            </TabItem>
         </TabControl>
 
         <!-- ========================================================= -->
@@ -804,9 +697,19 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="TxtEstadoGlobal" Text="Sistema listo para operar." FontSize="11" Foreground="#475569" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="Patronato Nacional de Ciegos • v1.0.0 (WPF .NET 10)" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" />
+
+                <!-- Visible solo mientras haya cobros encolados sin confirmar con el Gateway -->
+                <Border x:Name="BadgePendientes" Grid.Column="1" Background="#FEF3C7" CornerRadius="10" Padding="8,3" Margin="0,0,14,0" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⏳ " FontSize="11" />
+                        <TextBlock x:Name="TxtPendientes" Text="0 pendientes de sincronizar" FontSize="11" FontWeight="SemiBold" Foreground="#92400E" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Grid.Column="2" Text="Patronato Nacional de Ciegos • v1.0.0 (WPF .NET 10)" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" />
             </Grid>
         </Border>
     </Grid>

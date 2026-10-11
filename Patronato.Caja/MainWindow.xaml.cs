@@ -17,6 +17,8 @@ namespace Patronato.Caja
     {
         private readonly ApiService _apiService = new();
         private readonly DispatcherTimer _clockTimer = new();
+        private readonly DispatcherTimer _syncTimer = new();
+        private bool _sincronizando = false;
 
         // Colecciones en memoria
         private List<ProductoItem> _catalogoProductos = new();
@@ -34,13 +36,16 @@ namespace Patronato.Caja
             GridCarrito.ItemsSource = _carrito;
 
             Loaded += MainWindow_Loaded;
+            Closed += (s, e) => _syncTimer.Stop();
             ConfigurarReloj();
+            ConfigurarSincronizacion();
         }
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             CargarInfoSesion();
             await CargarDatosInicialesAsync();
+            ActualizarBadgePendientes();
         }
 
         private void ConfigurarReloj()
@@ -53,8 +58,60 @@ namespace Patronato.Caja
             _clockTimer.Start();
         }
 
+        // Reintenta automáticamente, cada 15s, reenviar al Gateway lo que haya quedado
+        // encolado mientras la Caja no tenía conexión (ver OfflineQueueService). Es el lado
+        // "Caja -> Gateway" del store-and-forward; el Gateway hace lo mismo hacia el Core
+        // de forma independiente (ver Patronato.Gateway.Services.CoreSyncWorker).
+        private void ConfigurarSincronizacion()
+        {
+            OfflineQueueService.CambioPendientes += () => Dispatcher.Invoke(ActualizarBadgePendientes);
+
+            _syncTimer.Interval = TimeSpan.FromSeconds(15);
+            _syncTimer.Tick += async (s, e) => await IntentarSincronizarPendientesAsync();
+            _syncTimer.Start();
+        }
+
+        private async Task IntentarSincronizarPendientesAsync()
+        {
+            if (_sincronizando || OfflineQueueService.CantidadPendientes == 0) return;
+
+            _sincronizando = true;
+            try
+            {
+                int sincronizadas = await _apiService.SincronizarPendientesAsync();
+                if (sincronizadas > 0)
+                {
+                    SetEstado($"{sincronizadas} transacción(es) pendiente(s) sincronizada(s) con el Gateway.");
+                    await CargarArqueoAsync();
+                    await CargarHistorialRecibosAsync();
+                }
+            }
+            finally
+            {
+                _sincronizando = false;
+                ActualizarBadgePendientes();
+            }
+        }
+
+        private void ActualizarBadgePendientes()
+        {
+            int pendientes = OfflineQueueService.CantidadPendientes;
+            if (pendientes > 0)
+            {
+                BadgePendientes.Visibility = Visibility.Visible;
+                TxtPendientes.Text = pendientes == 1 ? "1 pendiente de sincronizar" : $"{pendientes} pendientes de sincronizar";
+            }
+            else
+            {
+                BadgePendientes.Visibility = Visibility.Collapsed;
+            }
+        }
+
         private void CargarInfoSesion()
         {
+            // Esta terminal es exclusiva de cobro (Cajero/Administrador); agendar citas,
+            // otorgar préstamos, generar órdenes y administrar empleados son tareas de
+            // Recepción/Web y no tienen pantalla aquí.
             var sesion = SessionManager.CurrentSession;
             string rol = sesion?.Rol ?? "Cajero";
             TxtInfoCajero.Text = sesion?.Nombre ?? "Cajero General";
@@ -62,72 +119,9 @@ namespace Patronato.Caja
             TxtInfoRol.Text = rol;
 
             bool esAdmin = rol == "Administrador";
-            bool esRecepcion = rol == "Recepcionista";
-
-            // Color del Badge de Rol
-            if (esRecepcion)
-            {
-                BadgeRol.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(124, 58, 237)); // Púrpura
-            }
-            else if (esAdmin)
-            {
-                BadgeRol.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(15, 23, 42)); // Slate Oscuro
-            }
-            else
-            {
-                BadgeRol.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(2, 132, 199)); // Azul Cyan
-            }
-
-            // Control de pestañas por Rol
-            TabGestionCajeros.Visibility = esAdmin ? Visibility.Visible : Visibility.Collapsed;
-            TabArqueoCaja.Visibility = esRecepcion ? Visibility.Collapsed : Visibility.Visible;
-            TabDonaciones.Visibility = esRecepcion ? Visibility.Collapsed : Visibility.Visible;
-
-            // En Préstamos: Banner informativo para Recepción (Caja solo cobra cuotas de préstamos aprobados vía Web)
-            PanelInfoPrestamosRecepcion.Visibility = esRecepcion ? Visibility.Visible : Visibility.Collapsed;
-
-            // Adaptación de Interfaz POS según el Rol (Recepción crea órdenes, Cajero y Admin cobran)
-            if (esRecepcion)
-            {
-                PanelCobroEfectivo.Visibility = Visibility.Collapsed;
-                PanelInfoRecepcion.Visibility = Visibility.Visible;
-                BtnCobrarVenta.Visibility = Visibility.Collapsed;
-                BtnGenerarOrdenVenta.Visibility = Visibility.Visible;
-                PanelOrdenesPendientes.Visibility = Visibility.Collapsed;
-                LblTotalTitulo.Text = "TOTAL DE LA ORDEN:";
-                TxtTituloCarrito.Text = "Detalle de Orden / Cotización";
-
-                // En Masajes: Recepción agenda citas pero no cobra dinero en ventanilla
-                BtnCobrarMasaje.IsEnabled = false;
-                BtnCobrarMasaje.ToolTip = "Solo el Cajero puede cobrar el servicio en ventanilla.";
-
-                // En Préstamos: Recepción consulta saldos pero no cobra abonos
-                BtnAplicarAbono.IsEnabled = false;
-                BtnAplicarAbono.ToolTip = "Solo el Cajero puede cobrar abonos en ventanilla.";
-
-                // En Donaciones: Recepción no maneja cobro directo
-                BtnRegistrarDonacion.IsEnabled = false;
-                BtnRegistrarDonacion.ToolTip = "El cobro y recibo oficial de donaciones se emite en Caja.";
-            }
-            else
-            {
-                PanelCobroEfectivo.Visibility = Visibility.Visible;
-                PanelInfoRecepcion.Visibility = Visibility.Collapsed;
-                BtnCobrarVenta.Visibility = Visibility.Visible;
-                BtnGenerarOrdenVenta.Visibility = Visibility.Collapsed;
-                PanelOrdenesPendientes.Visibility = Visibility.Visible;
-                LblTotalTitulo.Text = "TOTAL A COBRAR:";
-                TxtTituloCarrito.Text = "Detalle del Carrito / Cobro";
-
-                BtnCobrarMasaje.IsEnabled = true;
-                BtnCobrarMasaje.ToolTip = null;
-
-                BtnAplicarAbono.IsEnabled = true;
-                BtnAplicarAbono.ToolTip = null;
-
-                BtnRegistrarDonacion.IsEnabled = true;
-                BtnRegistrarDonacion.ToolTip = null;
-            }
+            BadgeRol.Background = new System.Windows.Media.SolidColorBrush(esAdmin
+                ? System.Windows.Media.Color.FromRgb(15, 23, 42)    // Slate Oscuro (Administrador)
+                : System.Windows.Media.Color.FromRgb(2, 132, 199)); // Azul Cyan (Cajero)
         }
 
         private async Task CargarDatosInicialesAsync()
@@ -213,10 +207,6 @@ namespace Patronato.Caja
             else if (header.Contains("Préstamos"))
             {
                 await CargarPrestamosAsync();
-            }
-            else if (header.Contains("Gestión") || header.Contains("Admin"))
-            {
-                await CargarUsuariosAdminAsync();
             }
         }
 
@@ -430,60 +420,6 @@ namespace Patronato.Caja
             }
         }
 
-        private async void BtnGenerarOrdenVenta_Click(object sender, RoutedEventArgs e)
-        {
-            if (!_carrito.Any())
-            {
-                MessageBox.Show("El carrito de compras está vacío. Agregue productos antes de generar la orden.", "Carrito Vacío", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            string cliente = string.IsNullOrWhiteSpace(CmbClientesFrecuentes.Text) ? "Consumidor Final" : CmbClientesFrecuentes.Text.Trim();
-            decimal total = _carrito.Sum(c => c.Subtotal);
-
-            BtnGenerarOrdenVenta.IsEnabled = false;
-            SetEstado("Generando orden de pedido para Caja...");
-
-            try
-            {
-                var dto = new CrearOrdenDto
-                {
-                    ClienteNombre = cliente,
-                    CreadoPor = $"{SessionManager.CurrentSession?.Nombre ?? "Laura Sánchez"} (Recepción)",
-                    Notas = $"Orden de insumos generada en recepción ({_carrito.Count} artículos)",
-                    Items = _carrito.Select(c => new OrdenItemDto
-                    {
-                        ProductoId = c.ProductoId,
-                        Codigo = c.Codigo,
-                        Nombre = c.Nombre,
-                        Cantidad = c.Cantidad,
-                        PrecioUnitario = c.PrecioUnitario
-                    }).ToList()
-                };
-
-                var (success, message, orden) = await _apiService.CrearOrdenAsync(dto);
-                if (!success || orden == null)
-                {
-                    MessageBox.Show(message, "Error al Generar Orden", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
-                MessageBox.Show($"¡Orden generada con éxito!\n\nNo. Orden: {orden.NumeroOrden}\nCliente: {cliente}\nTotal a Pagar en Caja: RD$ {total:N2}\n\nIndique al cliente que pase a la ventanilla de Caja con este número de orden para pagar.", "Orden Registrada en Recepción", MessageBoxButton.OK, MessageBoxImage.Information);
-
-                _carrito.Clear();
-                ActualizarTotalCarrito();
-                CmbClientesFrecuentes.Text = "Consumidor Final";
-
-                await CargarOrdenesPendientesAsync();
-                await CargarClientesFrecuentesAsync();
-                SetEstado($"Orden {orden.NumeroOrden} lista para ser cobrada en Caja.");
-            }
-            finally
-            {
-                BtnGenerarOrdenVenta.IsEnabled = true;
-            }
-        }
-
         private async void BtnCobrarVenta_Click(object sender, RoutedEventArgs e)
         {
             if (!_carrito.Any())
@@ -571,17 +507,6 @@ namespace Patronato.Caja
             SetEstado("Lista de masajes TACTO actualizada.");
         }
 
-        private async void BtnAbrirAgendarMasaje_Click(object sender, RoutedEventArgs e)
-        {
-            var modal = new AgendarMasajeWindow { Owner = this };
-            if (modal.ShowDialog() == true)
-            {
-                await CargarMasajesAsync();
-                await CargarClientesFrecuentesAsync();
-                SetEstado("Nueva cita de Masaje TACTO agendada exitosamente.");
-            }
-        }
-
         private void GridMasajes_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (GridMasajes.SelectedItem is SesionMasajeItem sesion)
@@ -589,8 +514,7 @@ namespace Patronato.Caja
                 TxtDetalleMasajeSeleccionado.Text = $"Cita #{sesion.Id}: {sesion.NombreCliente} | Masajista: {sesion.NombreMasajista} ({sesion.DuracionMinutos} min)";
                 TxtTarifaMasaje.Text = $"RD$ {sesion.PrecioTarifa:N2}";
                 TxtMontoRecibidoMasaje.Text = sesion.PrecioTarifa.ToString("F2");
-                bool esRecepcion = SessionManager.CurrentSession?.Rol == "Recepcionista";
-                BtnCobrarMasaje.IsEnabled = !esRecepcion;
+                BtnCobrarMasaje.IsEnabled = true;
             }
             else
             {
@@ -647,7 +571,7 @@ namespace Patronato.Caja
 
             try
             {
-                var (success, message, recibo) = await _apiService.CobrarMasajeAsync(sesion.Id, metodo, recibido);
+                var (success, message, recibo) = await _apiService.CobrarMasajeAsync(sesion, metodo, recibido);
                 if (!success)
                 {
                     MessageBox.Show(message, "Error al Cobrar Masaje", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -707,9 +631,7 @@ namespace Patronato.Caja
                 TxtSaldoActual.Text = $"RD$ {prestamo.SaldoPendiente:N2}";
                 TxtMontoAbono.Text = Math.Min(1000, prestamo.SaldoPendiente).ToString("F2");
                 CalcularNuevoSaldoPrestamo(prestamo);
-                
-                bool esRecepcion = SessionManager.CurrentSession?.Rol == "Recepcionista";
-                BtnAplicarAbono.IsEnabled = !esRecepcion;
+                BtnAplicarAbono.IsEnabled = true;
             }
             else
             {
@@ -765,7 +687,7 @@ namespace Patronato.Caja
 
             try
             {
-                var (success, message, nuevoSaldo, recibo) = await _apiService.AbonarPrestamoAsync(prestamo.Id, montoAbono, metodo, montoAbono);
+                var (success, message, nuevoSaldo, recibo) = await _apiService.AbonarPrestamoAsync(prestamo, montoAbono, metodo, montoAbono);
                 if (!success)
                 {
                     MessageBox.Show(message, "Error al Abonar", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -996,77 +918,6 @@ namespace Patronato.Caja
             else
             {
                 MessageBox.Show("Por favor seleccione un recibo de la lista.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-        }
-
-        // =========================================================
-        // 7. ADMINISTRACIÓN DE CAJEROS (SOLO ADMIN)
-        // =========================================================
-        private async Task CargarUsuariosAdminAsync()
-        {
-            var usuarios = await _apiService.GetUsuariosAsync();
-            GridUsuariosAdmin.ItemsSource = null;
-            GridUsuariosAdmin.ItemsSource = usuarios;
-        }
-
-        private async void BtnActualizarUsuariosAdmin_Click(object sender, RoutedEventArgs e)
-        {
-            await CargarUsuariosAdminAsync();
-            SetEstado("Lista de empleados actualizada.");
-        }
-
-        private async void BtnRegistrarCajero_Click(object sender, RoutedEventArgs e)
-        {
-            string nombre = TxtNuevoNombreCompleto.Text.Trim();
-            string usuario = TxtNuevoUsuario.Text.Trim();
-            string correo = TxtNuevoCorreo.Text.Trim();
-            string password = TxtNuevoPassword.Text.Trim();
-
-            if (string.IsNullOrWhiteSpace(nombre) || string.IsNullOrWhiteSpace(usuario) || string.IsNullOrWhiteSpace(password))
-            {
-                MessageBox.Show("Por favor complete el nombre, usuario y contraseña.", "Campos Requeridos", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            int sucursalId = 1;
-            if (CmbNuevaSucursal.SelectedItem is ComboBoxItem item && item.Tag != null)
-            {
-                int.TryParse(item.Tag.ToString(), out sucursalId);
-            }
-
-            int rol = 2;
-            if (CmbNuevoRol.SelectedItem is ComboBoxItem rolItem && rolItem.Tag != null)
-            {
-                int.TryParse(rolItem.Tag.ToString(), out rol);
-            }
-            string rolTexto = rol == 5 ? "Recepcionista" : "Cajero";
-
-            BtnRegistrarCajero.IsEnabled = false;
-            SetEstado($"Registrando nuevo {rolTexto.ToLower()} en el sistema...");
-
-            try
-            {
-                var (success, message, nuevoUsuario) = await _apiService.CrearUsuarioAsync(nombre, usuario, correo, password, rol, sucursalId);
-
-                if (!success)
-                {
-                    MessageBox.Show(message, "Error al Crear Empleado", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
-                MessageBox.Show($"¡{rolTexto} '{nombre}' creado exitosamente!\n\nUsuario: {usuario}\nContraseña: {password}\nRol: {rolTexto}\n\nEl empleado ya puede iniciar sesión en el sistema con sus credenciales.", "Empleado Registrado", MessageBoxButton.OK, MessageBoxImage.Information);
-
-                TxtNuevoNombreCompleto.Text = "";
-                TxtNuevoUsuario.Text = "";
-                TxtNuevoCorreo.Text = "";
-                TxtNuevoPassword.Text = "cajero123";
-
-                await CargarUsuariosAdminAsync();
-                SetEstado($"Nuevo {rolTexto.ToLower()} registrado satisfactoriamente.");
-            }
-            finally
-            {
-                BtnRegistrarCajero.IsEnabled = true;
             }
         }
 

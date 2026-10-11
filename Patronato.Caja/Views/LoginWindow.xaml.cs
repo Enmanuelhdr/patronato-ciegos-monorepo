@@ -51,13 +51,6 @@ namespace Patronato.Caja.Views
             TxtError.Visibility = Visibility.Collapsed;
         }
 
-        private void BtnDemoRecepcion_Click(object sender, RoutedEventArgs e)
-        {
-            TxtUsuario.Text = "recepcion";
-            TxtPassword.Password = "recepcion123";
-            TxtError.Visibility = Visibility.Collapsed;
-        }
-
         private void BtnDemoAdmin_Click(object sender, RoutedEventArgs e)
         {
             TxtUsuario.Text = "admin";

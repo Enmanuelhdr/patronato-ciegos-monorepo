@@ -145,28 +145,20 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Button Content="Cajero" 
-                                Grid.Column="0" Height="28" 
-                                Background="#F8FAFC" Foreground="#0284C7" 
-                                BorderBrush="#BAE6FD" FontSize="11" 
-                                Margin="0,0,3,0" 
-                                Click="BtnDemoCajero_Click" 
+                        <Button Content="Cajero"
+                                Grid.Column="0" Height="28"
+                                Background="#F8FAFC" Foreground="#0284C7"
+                                BorderBrush="#BAE6FD" FontSize="11"
+                                Margin="0,0,3,0"
+                                Click="BtnDemoCajero_Click"
                                 ToolTip="Usuario: cajero / Clave: cajero123" />
-                        <Button Content="Recepción" 
-                                Grid.Column="1" Height="28" 
-                                Background="#F8FAFC" Foreground="#7C3AED" 
-                                BorderBrush="#DDD6FE" FontSize="11" 
-                                Margin="3,0,3,0" 
-                                Click="BtnDemoRecepcion_Click" 
-                                ToolTip="Usuario: recepcion / Clave: recepcion123" />
-                        <Button Content="Admin" 
-                                Grid.Column="2" Height="28" 
-                                Background="#F8FAFC" Foreground="#475569" 
-                                BorderBrush="#CBD5E1" FontSize="11" 
-                                Margin="3,0,0,0" 
-                                Click="BtnDemoAdmin_Click" 
+                        <Button Content="Admin"
+                                Grid.Column="1" Height="28"
+                                Background="#F8FAFC" Foreground="#475569"
+                                BorderBrush="#CBD5E1" FontSize="11"
+                                Margin="3,0,0,0"
+                                Click="BtnDemoAdmin_Click"
                                 ToolTip="Usuario: admin / Clave: admin123" />
                     </Grid>
                 </StackPanel>

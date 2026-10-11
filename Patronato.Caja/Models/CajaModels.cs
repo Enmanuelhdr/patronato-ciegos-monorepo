@@ -147,6 +147,8 @@ namespace Patronato.Caja.Models
     // ==========================================
     // 4. PRÉSTAMOS DE EMPRENDIMIENTO
     // ==========================================
+    // Viene embebido en PrestamoItem.Beneficiario (el Core lo incluye en prestamos-activos).
+    // Otorgar un préstamo nuevo no es función de esta terminal de cobro.
     public class BeneficiarioInfo
     {
         [JsonPropertyName("id")]
@@ -344,51 +346,15 @@ namespace Patronato.Caja.Models
     }
 
     // ==========================================
-    // 8. ADMINISTRACIÓN DE USUARIOS Y CAJEROS
+    // 8. SUCURSALES (nombre real desde el Core, no hardcodeado en la Caja)
     // ==========================================
-    public class UsuarioDto
+    public class SucursalDto
     {
         [JsonPropertyName("id")]
         public int Id { get; set; }
 
-        [JsonPropertyName("nombreCompleto")]
-        public string NombreCompleto { get; set; } = string.Empty;
-
-        [JsonPropertyName("nombreUsuario")]
-        public string NombreUsuario { get; set; } = string.Empty;
-
-        [JsonPropertyName("correo")]
-        public string Correo { get; set; } = string.Empty;
-
-        [JsonPropertyName("passwordHash")]
-        public string PasswordHash { get; set; } = string.Empty;
-
-        [JsonPropertyName("rol")]
-        public int Rol { get; set; }
-
-        [JsonPropertyName("sucursalId")]
-        public int SucursalId { get; set; }
-
-        [JsonPropertyName("activo")]
-        public bool Activo { get; set; }
-
-        public string RolTexto => Rol switch
-        {
-            1 => "Administrador",
-            2 => "Cajero",
-            3 => "Médico Oftalmólogo",
-            4 => "Instructor Rehabilitación",
-            5 => "Recepcionista",
-            _ => "Empleado"
-        };
-
-        public string SucursalTexto => SucursalId switch
-        {
-            1 => "Sede Central Santo Domingo",
-            2 => "Regional Norte Santiago",
-            3 => "Regional Sur Barahona",
-            _ => "Sede General"
-        };
+        [JsonPropertyName("nombre")]
+        public string Nombre { get; set; } = string.Empty;
     }
 
     // ==========================================
@@ -410,28 +376,11 @@ namespace Patronato.Caja.Models
             : $"{Nombre} - {Documento} ({Tipo})";
     }
 
-    public class CrearMasajeDto
-    {
-        public string NombreCliente { get; set; } = string.Empty;
-        public string TelefonoCliente { get; set; } = string.Empty;
-        public string NombreMasajista { get; set; } = "David Silverio (Terapeuta Invidente)";
-        public int Sede { get; set; } = 1;
-        public int DuracionMinutos { get; set; } = 45;
-        public decimal PrecioTarifa { get; set; } = 500m;
-    }
-
-    public class CrearPrestamoDto
-    {
-        public int BeneficiarioId { get; set; }
-        public decimal MontoAprobado { get; set; }
-        public int PlazoMeses { get; set; } = 12;
-        public int Rubro { get; set; } = 1;
-        public bool InvolucraFamilia { get; set; } = true;
-    }
-
     // ==========================================
-    // 10. ÓRDENES DE PEDIDO Y COTIZACIONES (RECEPCIÓN Y CAJA)
+    // 10. ÓRDENES DE PEDIDO PENDIENTES DE COBRO
     // ==========================================
+    // La orden se genera fuera de esta terminal (Recepción/Web); la Caja solo la
+    // carga al carrito para cobrarla (ver BtnCargarOrden_Click en MainWindow).
     public class OrdenPedidoCajaDto
     {
         [JsonPropertyName("id")]
@@ -465,15 +414,6 @@ namespace Patronato.Caja.Models
         public string? Notas { get; set; }
 
         public string ResumenTexto => $"{NumeroOrden} | {ClienteNombre} (RD$ {Total:N2}) - {CreadoPor}";
-    }
-
-    public class CrearOrdenDto
-    {
-        public string ClienteNombre { get; set; } = string.Empty;
-        public string? ClienteDocumento { get; set; }
-        public string CreadoPor { get; set; } = "Recepción";
-        public string? Notas { get; set; }
-        public List<OrdenItemDto> Items { get; set; } = new();
     }
 
     public class OrdenItemDto

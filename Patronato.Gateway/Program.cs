@@ -13,6 +13,18 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Permite que la Web (React) llame al Gateway desde el navegador. La Caja no la necesita
+// (entra por socket), pero la Web sí: es un cliente JavaScript corriendo en otro origen.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 void ConfigurarClienteCore(HttpClient client)
 {
     var baseUrl = builder.Configuration["CoreApi:BaseUrl"] ?? "http://localhost:57141";
@@ -25,15 +37,20 @@ void ConfigurarClienteCore(HttpClient client)
         client.DefaultRequestHeaders.Add("X-Gateway-Key", apiKey);
 }
 
+builder.Services.AddSingleton<PendingQueueStore>();
 builder.Services.AddHttpClient<CoreGatewayService>(ConfigurarClienteCore);
 builder.Services.AddHttpClient<ReverseProxyService>(ConfigurarClienteCore);
 
 builder.Services.AddHostedService<CajaSocketServer>();
+// Cuando el Core está caído, las transacciones de cobro quedan en PendingQueueStore;
+// este worker las reenvía automáticamente en cuanto el Core vuelve a responder.
+builder.Services.AddHostedService<CoreSyncWorker>();
 
 var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseCors("AllowAll");
 
 // Middleware: marca el origen "Web" para todo lo que entra por HTTP (API Gateway REST
 // y el reverse proxy hacia el Core) y registra la acción y cualquier error en el log.

@@ -1,0 +1,222 @@
+// Tipos que reflejan las entidades reales del Core (Patronato.Core/Entities y Enums).
+// Los nombres de campo son camelCase porque ASP.NET Core serializa así por defecto
+// (AddControllers() usa JsonNamingPolicy.CamelCase) — confirmado contra el Core en vivo.
+
+export type RolUsuario = 1 | 2 | 3 | 4 | 5;
+export const RolUsuarioTexto: Record<RolUsuario, string> = {
+  1: "Administrador",
+  2: "Cajero",
+  3: "Médico Oftalmólogo",
+  4: "Instructor Rehabilitación",
+  5: "Recepcionista",
+};
+
+export type SedeEnum = 1 | 2 | 3;
+export const SedeTexto: Record<SedeEnum, string> = {
+  1: "Santo Domingo (Sede Central)",
+  2: "Santiago (Regional Norte)",
+  3: "Barahona (Regional Sur)",
+};
+
+export type TipoDiscapacidadVisual = 1 | 2 | 3;
+export const TipoDiscapacidadTexto: Record<TipoDiscapacidadVisual, string> = {
+  1: "Baja Visión",
+  2: "Ceguera Total Congénita",
+  3: "Ceguera Total Adquirida",
+};
+
+export type RubroMicroemprendimiento = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export const RubroTexto: Record<RubroMicroemprendimiento, string> = {
+  1: "Colmado",
+  2: "Paletera",
+  3: "Venta de Ropa de Paca",
+  4: "Masajes Itinerantes",
+  5: "Elaboración de Detergentes y Suapers",
+  6: "Crianza de Animales y Aves",
+  7: "Siembras Diversas",
+  8: "Venta de Tarjetas de Llamadas",
+  9: "Artesanía y Bisutería",
+  10: "Ventas Diversas",
+};
+
+export type EstadoPrestamo = 1 | 2 | 3 | 4;
+export const EstadoPrestamoTexto: Record<EstadoPrestamo, string> = {
+  1: "Activo",
+  2: "Pagado",
+  3: "En Mora",
+  4: "Exonerado",
+};
+
+export type EtapaRehabilitacion = 1 | 2;
+export const EtapaTexto: Record<EtapaRehabilitacion, string> = {
+  1: "Funcional (independencia personal)",
+  2: "Profesional (inserción laboral)",
+};
+
+export interface Beneficiario {
+  id: number;
+  nombres: string;
+  apellidos: string;
+  cedula: string;
+  telefono: string;
+  sedeAsignada: SedeEnum;
+  condicionVisual: TipoDiscapacidadVisual;
+  fechaIngreso: string;
+  activo: boolean;
+}
+
+export interface Sucursal {
+  id: number;
+  nombre: string;
+  direccion: string;
+  telefono: string;
+  encargado: string;
+  activa: boolean;
+}
+
+export interface Usuario {
+  id: number;
+  nombreCompleto: string;
+  nombreUsuario: string;
+  correo: string;
+  rol: RolUsuario;
+  sucursalId: number;
+  activo: boolean;
+  fechaCreacion: string;
+}
+
+export interface LoginResponse {
+  mensaje: string;
+  usuarioId: number;
+  nombre: string;
+  rol: string;
+  sucursalId: number;
+}
+
+export interface ConsultaOftalmologica {
+  id: number;
+  beneficiarioId: number;
+  beneficiario?: Beneficiario | null;
+  sede: SedeEnum;
+  oftalmologo: string;
+  fecha: string;
+  diagnosticoOcular: string;
+  tratamientoPrescrito: string;
+  tarifaConsulta: number;
+  cubiertoPorARS: boolean;
+  estaFacturadaEnCaja: boolean;
+}
+
+export interface InscripcionRehabilitacion {
+  id: number;
+  beneficiarioId: number;
+  beneficiario?: Beneficiario | null;
+  sede: SedeEnum;
+  etapa: EtapaRehabilitacion;
+  tallerMateria: string;
+  fechaInicio: string;
+  completado: boolean;
+}
+
+export interface Voluntario {
+  id: number;
+  nombreCompleto: string;
+  cedula: string;
+  telefono: string;
+  correo: string;
+  areaApoyo: string;
+  fechaRegistro: string;
+  activo: boolean;
+}
+
+export interface Donacion {
+  id: number;
+  donante: string;
+  rncCedula: string;
+  monto: number;
+  fecha: string;
+  metodoPago: string;
+  requiereComprobanteFiscal: boolean;
+  estaRegistradaEnCaja: boolean;
+}
+
+export interface ProductoArticulo {
+  id: number;
+  codigo: string;
+  nombre: string;
+  categoria: string;
+  precioVenta: number;
+  stockDisponible: number;
+}
+
+export interface SesionMasajeTacto {
+  id: number;
+  nombreCliente: string;
+  telefonoCliente: string;
+  nombreMasajista: string;
+  sede: SedeEnum;
+  fechaHora: string;
+  duracionMinutos: number;
+  precioTarifa: number;
+  estaFacturadoEnCaja: boolean;
+}
+
+export interface PrestamoEmprendimiento {
+  id: number;
+  beneficiarioId: number;
+  beneficiario?: Beneficiario | null;
+  montoAprobado: number;
+  saldoPendiente: number;
+  plazoMeses: number;
+  rubro: RubroMicroemprendimiento;
+  estudioFactibilidadAprobado: boolean;
+  involucraFamilia: boolean;
+  estado: EstadoPrestamo;
+  justificacionExoneracion: string;
+}
+
+export interface OrdenPedidoCaja {
+  id: number;
+  numeroOrden: string;
+  fechaHora: string;
+  clienteNombre: string;
+  clienteDocumento?: string | null;
+  creadoPor: string;
+  estado: string;
+  total: number;
+  itemsJson: string;
+  notas?: string | null;
+}
+
+export interface TransaccionCaja {
+  id: number;
+  numeroRecibo: string;
+  fechaHora: string;
+  tipoTransaccion: string;
+  concepto: string;
+  montoTotal: number;
+  metodoPago: string;
+  montoRecibido: number;
+  devuelta: number;
+  cajero: string;
+  sucursal: string;
+  clienteOBeneficiario?: string | null;
+  identificacionCliente?: string | null;
+  detalleLineas?: string | null;
+  referenciaId?: number | null;
+}
+
+export interface CuadreCaja {
+  fecha: string;
+  cajero: string;
+  cantidadTransacciones: number;
+  totalGeneral: number;
+  porMetodo: { efectivo: number; tarjeta: number; transferencia: number };
+  porConcepto: {
+    ventasProductos: number;
+    masajesTacto: number;
+    abonosPrestamos: number;
+    donaciones: number;
+  };
+  movimientos: TransaccionCaja[];
+}

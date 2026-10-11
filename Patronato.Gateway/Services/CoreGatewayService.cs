@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Patronato.Gateway.Protocol;
@@ -6,15 +7,19 @@ namespace Patronato.Gateway.Services;
 
 // Punto único donde convergen la petición REST (web) y la petición por socket (Caja):
 // ambas terminan aquí como un TransaccionRequest y salen como una sola llamada al Core.
+// Si el Core está caído, las transacciones de cobro no se pierden: quedan encoladas en
+// PendingQueueStore y CoreSyncWorker las reenvía cuando el Core vuelve a responder.
 public class CoreGatewayService
 {
     private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger(typeof(CoreGatewayService));
 
     private readonly HttpClient _httpClient;
+    private readonly PendingQueueStore _cola;
 
-    public CoreGatewayService(HttpClient httpClient)
+    public CoreGatewayService(HttpClient httpClient, PendingQueueStore cola)
     {
         _httpClient = httpClient;
+        _cola = cola;
     }
 
     public async Task<TransaccionResponse> ProcesarAsync(TransaccionRequest request, string origen)
@@ -26,11 +31,27 @@ public class CoreGatewayService
         {
             var respuesta = request.CodigoTransaccion switch
             {
+                // Línea viva (como el "keep-alive" de un cajero automático): no toca el Core.
+                "PING" => Aprobar(request, "Gateway operativo."),
+
+                // Transaccionales: mueven dinero real, siempre contra el Core.
                 "MASAJE_COBRAR" => await CobrarMasajeAsync(request, origen),
                 "PRESTAMO_ABONAR" => await AbonarPrestamoAsync(request, origen),
                 "PRODUCTO_VENDER" => await VenderProductoAsync(request, origen),
                 "VENTA_CARRITO" => await VenderCarritoAsync(request, origen),
                 "DONACION_REGISTRAR" => await RegistrarDonacionAsync(request, origen),
+
+                // Consultas: la Caja ya no usa HTTP en absoluto, todo entra por el mismo socket.
+                "LOGIN" => await LoginAsync(request, origen),
+                "SUCURSALES_CONSULTAR" => await ConsultarAsync(request, origen, "api/Sucursales"),
+                "INVENTARIO_CONSULTAR" => await ConsultarAsync(request, origen, "api/inventario"),
+                "MASAJES_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/masajes-pendientes"),
+                "CLIENTES_FRECUENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/clientes-frecuentes"),
+                "ORDENES_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/ordenes-pendientes"),
+                "PRESTAMOS_ACTIVOS_CONSULTAR" => await PrestamosActivosAsync(request, origen),
+                "CUADRE_CAJA_CONSULTAR" => await CuadreCajaAsync(request, origen),
+                "TRANSACCIONES_CONSULTAR" => await TransaccionesAsync(request, origen),
+
                 _ => Rechazar(request, "12", $"Código de transacción no soportado: {request.CodigoTransaccion}")
             };
 
@@ -49,8 +70,8 @@ public class CoreGatewayService
         var datos = request.Datos;
         var id = datos.GetProperty("id").GetInt32();
         var query = ConstruirQueryCobro(datos);
-        var response = await EnviarAsync(HttpMethod.Post, $"api/caja/cobrar-masaje/{id}?{query}", null, origen);
-        return await TraducirRespuestaAsync(request, response);
+        var ruta = $"api/caja/cobrar-masaje/{id}?{query}";
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, ruta, null, null);
     }
 
     private async Task<TransaccionResponse> AbonarPrestamoAsync(TransaccionRequest request, string origen)
@@ -59,9 +80,8 @@ public class CoreGatewayService
         var prestamoId = datos.GetProperty("prestamoId").GetInt32();
         var monto = datos.GetProperty("monto").GetDecimal();
         var query = ConstruirQueryCobro(datos);
-        var response = await EnviarAsync(HttpMethod.Post,
-            $"api/caja/abonar-prestamo?prestamoId={prestamoId}&monto={monto}&{query}", null, origen);
-        return await TraducirRespuestaAsync(request, response);
+        var ruta = $"api/caja/abonar-prestamo?prestamoId={prestamoId}&monto={monto}&{query}";
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, ruta, null, null);
     }
 
     private async Task<TransaccionResponse> VenderProductoAsync(TransaccionRequest request, string origen)
@@ -73,16 +93,15 @@ public class CoreGatewayService
         if (datos.TryGetProperty("cliente", out var clienteEl) && clienteEl.ValueKind == JsonValueKind.String)
             query += $"&cliente={Uri.EscapeDataString(clienteEl.GetString() ?? string.Empty)}";
 
-        var response = await EnviarAsync(HttpMethod.Post,
-            $"api/caja/vender-producto?productoId={productoId}&cantidad={cantidad}&{query}", null, origen);
-        return await TraducirRespuestaAsync(request, response);
+        var ruta = $"api/caja/vender-producto?productoId={productoId}&cantidad={cantidad}&{query}";
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, ruta, null, null);
     }
 
     private async Task<TransaccionResponse> VenderCarritoAsync(TransaccionRequest request, string origen)
     {
-        var content = new StringContent(request.Datos.GetRawText(), Encoding.UTF8, "application/json");
-        var response = await EnviarAsync(HttpMethod.Post, "api/caja/vender-carrito", content, origen);
-        return await TraducirRespuestaAsync(request, response);
+        var json = request.Datos.GetRawText();
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, "api/caja/vender-carrito", content, json);
     }
 
     private async Task<TransaccionResponse> RegistrarDonacionAsync(TransaccionRequest request, string origen)
@@ -90,9 +109,122 @@ public class CoreGatewayService
         var datos = request.Datos;
         var cajero = ObtenerTexto(datos, "cajero", "Caja Principal");
         var sucursal = ObtenerTexto(datos, "sucursal", "Sede Central");
-        var content = new StringContent(datos.GetRawText(), Encoding.UTF8, "application/json");
+        var json = datos.GetRawText();
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
         var query = $"cajero={Uri.EscapeDataString(cajero)}&sucursal={Uri.EscapeDataString(sucursal)}";
-        var response = await EnviarAsync(HttpMethod.Post, $"api/caja/donacion?{query}", content, origen);
+        var ruta = $"api/caja/donacion?{query}";
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, ruta, content, json);
+    }
+
+    // Envía una transacción de cobro al Core. Si el Core no responde (está caído), no se
+    // rechaza: se encola para reenviarla más tarde (ver CoreSyncWorker) y se le avisa a quien
+    // llamó (Web o Caja) que quedó aceptada-pendiente ("01"), no rechazada.
+    private async Task<TransaccionResponse> EnviarCobroAsync(
+        TransaccionRequest request, string origen, HttpMethod metodo, string ruta, HttpContent? content, string? cuerpoJsonParaCola)
+    {
+        try
+        {
+            var response = await EnviarAsync(metodo, ruta, content, origen);
+            return await TraducirRespuestaAsync(request, response);
+        }
+        catch (Exception ex) when (EsErrorDeConectividad(ex))
+        {
+            _cola.Encolar(new SolicitudPendiente
+            {
+                Metodo = metodo.Method,
+                Ruta = ruta,
+                CuerpoJson = cuerpoJsonParaCola,
+                Origen = origen,
+                CodigoTransaccion = request.CodigoTransaccion,
+                Stan = request.Stan
+            });
+
+            Logger.Warn($"Core no disponible: transacción {request.CodigoTransaccion} STAN={request.Stan} encolada ({_cola.Cantidad} pendiente(s)).", ex);
+
+            return new TransaccionResponse
+            {
+                Stan = request.Stan,
+                CodigoRespuesta = "01",
+                Mensaje = "El Core no está disponible en este momento: la operación quedó registrada y se confirmará automáticamente en cuanto vuelva en línea."
+            };
+        }
+    }
+
+    // Reenvía una transacción que había quedado encolada. Lo usa CoreSyncWorker cuando el
+    // Core vuelve a responder. Devuelve false solo si sigue sin poder conectar (se reintenta
+    // en el siguiente ciclo); un rechazo de negocio del Core (p.ej. stock ya no disponible)
+    // se considera resuelto (true) porque reintentarlo no cambiaría el resultado.
+    public async Task<bool> ReenviarPendienteAsync(SolicitudPendiente pendiente)
+    {
+        try
+        {
+            HttpContent? content = pendiente.CuerpoJson != null
+                ? new StringContent(pendiente.CuerpoJson, Encoding.UTF8, "application/json")
+                : null;
+
+            var response = await EnviarAsync(new HttpMethod(pendiente.Metodo), pendiente.Ruta, content, pendiente.Origen);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.Warn($"El Core rechazó la transacción encolada {pendiente.CodigoTransaccion} STAN={pendiente.Stan} ({response.StatusCode}); se descarta.");
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (EsErrorDeConectividad(ex))
+        {
+            return false;
+        }
+    }
+
+    private static bool EsErrorDeConectividad(Exception ex) =>
+        ex is HttpRequestException or SocketException or TaskCanceledException or OperationCanceledException;
+
+    private async Task<TransaccionResponse> LoginAsync(TransaccionRequest request, string origen)
+    {
+        var datos = request.Datos;
+        var usuario = Uri.EscapeDataString(ObtenerTexto(datos, "nombreUsuario", ""));
+        var password = Uri.EscapeDataString(ObtenerTexto(datos, "password", ""));
+        var response = await EnviarAsync(HttpMethod.Post, $"api/Usuarios/login?nombreUsuario={usuario}&password={password}", null, origen);
+        return await TraducirRespuestaAsync(request, response);
+    }
+
+    private async Task<TransaccionResponse> PrestamosActivosAsync(TransaccionRequest request, string origen)
+    {
+        var filtro = ObtenerTexto(request.Datos, "filtro", "");
+        var ruta = "api/caja/prestamos-activos";
+        if (!string.IsNullOrWhiteSpace(filtro))
+            ruta += $"?filtro={Uri.EscapeDataString(filtro)}";
+        return await ConsultarAsync(request, origen, ruta);
+    }
+
+    private async Task<TransaccionResponse> CuadreCajaAsync(TransaccionRequest request, string origen)
+    {
+        var ruta = "api/caja/cuadre-caja" + ConstruirQueryFechaCajero(request.Datos);
+        return await ConsultarAsync(request, origen, ruta);
+    }
+
+    private async Task<TransaccionResponse> TransaccionesAsync(TransaccionRequest request, string origen)
+    {
+        var ruta = "api/caja/transacciones" + ConstruirQueryFechaCajero(request.Datos);
+        return await ConsultarAsync(request, origen, ruta);
+    }
+
+    private static string ConstruirQueryFechaCajero(JsonElement datos)
+    {
+        var fecha = ObtenerTexto(datos, "fecha", "");
+        var cajero = ObtenerTexto(datos, "cajero", "");
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(fecha)) partes.Add($"fecha={Uri.EscapeDataString(fecha)}");
+        if (!string.IsNullOrWhiteSpace(cajero)) partes.Add($"cajero={Uri.EscapeDataString(cajero)}");
+        return partes.Count > 0 ? "?" + string.Join("&", partes) : "";
+    }
+
+    // Consulta genérica de solo lectura: reenvía el GET al Core tal cual (la Caja ya
+    // nunca le habla directo), sin armar ningún query string especial.
+    private async Task<TransaccionResponse> ConsultarAsync(TransaccionRequest request, string origen, string ruta)
+    {
+        var response = await EnviarAsync(HttpMethod.Get, ruta, null, origen);
         return await TraducirRespuestaAsync(request, response);
     }
 
@@ -161,4 +293,7 @@ public class CoreGatewayService
 
     private static TransaccionResponse Rechazar(TransaccionRequest request, string codigoRespuesta, string mensaje) =>
         new() { Stan = request.Stan, CodigoRespuesta = codigoRespuesta, Mensaje = mensaje };
+
+    private static TransaccionResponse Aprobar(TransaccionRequest request, string mensaje) =>
+        new() { Stan = request.Stan, CodigoRespuesta = "00", Mensaje = mensaje };
 }
