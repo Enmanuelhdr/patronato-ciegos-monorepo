@@ -1,0 +1,107 @@
+{
+  "info": {
+    "name": "Patronato - API Gateway",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:57171" }
+  ],
+  "item": [
+    {
+      "name": "Web (lecturas/escrituras normales via Gateway)",
+      "item": [
+        {
+          "name": "GET Beneficiarios",
+          "request": {
+            "method": "GET",
+            "url": "{{gatewayUrl}}/api/beneficiarios"
+          }
+        },
+        {
+          "name": "GET Beneficiario por Id",
+          "request": {
+            "method": "GET",
+            "url": "{{gatewayUrl}}/api/beneficiarios/1"
+          }
+        },
+        {
+          "name": "POST Beneficiario",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{gatewayUrl}}/api/beneficiarios",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Ana\",\n  \"apellidos\": \"Ruiz\",\n  \"cedula\": \"003-1111111-1\",\n  \"telefono\": \"809-555-0000\",\n  \"sedeAsignada\": 1,\n  \"condicionVisual\": 1\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Caja (transacciones tipo ATM via REST)",
+      "item": [
+        {
+          "name": "Donacion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{gatewayUrl}}/api/gateway/transaccion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mti\": \"0200\",\n  \"stan\": \"000001\",\n  \"codigoTransaccion\": \"DONACION_REGISTRAR\",\n  \"datos\": { \"donante\": \"Juan Perez\", \"rncCedula\": \"001-1234567-8\", \"monto\": 500, \"metodoPago\": \"Efectivo\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Vender Producto",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{gatewayUrl}}/api/gateway/transaccion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mti\": \"0200\",\n  \"stan\": \"000002\",\n  \"codigoTransaccion\": \"PRODUCTO_VENDER\",\n  \"datos\": { \"productoId\": 1, \"cantidad\": 2 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Abonar Prestamo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{gatewayUrl}}/api/gateway/transaccion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mti\": \"0200\",\n  \"stan\": \"000003\",\n  \"codigoTransaccion\": \"PRESTAMO_ABONAR\",\n  \"datos\": { \"prestamoId\": 1, \"monto\": 200 }\n}"
+            }
+          }
+        },
+        {
+          "name": "Cobrar Masaje",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{gatewayUrl}}/api/gateway/transaccion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mti\": \"0200\",\n  \"stan\": \"000004\",\n  \"codigoTransaccion\": \"MASAJE_COBRAR\",\n  \"datos\": { \"id\": 1 }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Seguridad (verificar que el Core rechaza acceso directo)",
+      "item": [
+        {
+          "name": "Core directo SIN clave (debe dar 401)",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:57141/api/beneficiarios"
+          }
+        }
+      ]
+    }
+  ]
+}

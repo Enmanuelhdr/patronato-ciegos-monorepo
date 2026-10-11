@@ -24,6 +24,7 @@ namespace Patronato.Core.Data
         public DbSet<Voluntario> Voluntarios { get; set; }
         public DbSet<Sucursal> Sucursales { get; set; }
         public DbSet<Usuario> Usuarios { get; set; }
+        public DbSet<LogEntry> Logs { get; set; }
     }
 
 }

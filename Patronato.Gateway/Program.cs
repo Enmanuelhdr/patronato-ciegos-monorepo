@@ -1,0 +1,64 @@
+using Patronato.Gateway.Services;
+using Patronato.Gateway.Sockets;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Configurar log4net: log a nivel de archivo (ver log4net.config) para todo lo
+// que entra por HTTP (Web) o por socket (Caja, ver Sockets/CajaSocketServer).
+// LogRoot ancla la ruta del log al proyecto, sin importar desde dónde se ejecute el host.
+log4net.GlobalContext.Properties["LogRoot"] = builder.Environment.ContentRootPath;
+log4net.Config.XmlConfigurator.Configure(new FileInfo(Path.Combine(builder.Environment.ContentRootPath, "log4net.config")));
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+void ConfigurarClienteCore(HttpClient client)
+{
+    var baseUrl = builder.Configuration["CoreApi:BaseUrl"] ?? "http://localhost:57141";
+    client.BaseAddress = new Uri(baseUrl);
+    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+    // Única credencial que el Core acepta: sin esto, el Core rechaza la petición.
+    var apiKey = builder.Configuration["CoreApi:ApiKey"];
+    if (!string.IsNullOrEmpty(apiKey))
+        client.DefaultRequestHeaders.Add("X-Gateway-Key", apiKey);
+}
+
+builder.Services.AddHttpClient<CoreGatewayService>(ConfigurarClienteCore);
+builder.Services.AddHttpClient<ReverseProxyService>(ConfigurarClienteCore);
+
+builder.Services.AddHostedService<CajaSocketServer>();
+
+var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// Middleware: marca el origen "Web" para todo lo que entra por HTTP (API Gateway REST
+// y el reverse proxy hacia el Core) y registra la acción y cualquier error en el log.
+// La Caja no pasa por aquí: llega por socket y se registra en CajaSocketServer.
+var httpLogger = log4net.LogManager.GetLogger("Patronato.Gateway.Http");
+app.Use(async (context, next) =>
+{
+    log4net.LogicalThreadContext.Properties["Origen"] = "Web";
+
+    try
+    {
+        await next();
+        httpLogger.Info($"{context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> {context.Response.StatusCode}");
+    }
+    catch (Exception ex)
+    {
+        httpLogger.Error($"Error en {context.Request.Method} {context.Request.Path}{context.Request.QueryString}", ex);
+        throw;
+    }
+});
+
+app.MapControllers();
+
+// Cualquier /api/* que no sea /api/gateway/transaccion se reenvía tal cual al Core.
+app.MapFallback("/api/{**path}", async (HttpContext context, ReverseProxyService proxy) =>
+    await proxy.ProxyAsync(context));
+
+app.Run();
