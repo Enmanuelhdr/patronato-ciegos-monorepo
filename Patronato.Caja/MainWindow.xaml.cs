@@ -15,6 +15,8 @@ namespace Patronato.Caja
 {
     public partial class MainWindow : Window
     {
+        private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger(typeof(MainWindow));
+
         private readonly ApiService _apiService = new();
         private readonly DispatcherTimer _clockTimer = new();
         private readonly DispatcherTimer _syncTimer = new();
@@ -152,7 +154,7 @@ namespace Patronato.Caja
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error al cargar órdenes pendientes: {ex.Message}");
+                Logger.Warn("Error al cargar órdenes pendientes.", ex);
             }
         }
 
@@ -175,7 +177,7 @@ namespace Patronato.Caja
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error al cargar clientes frecuentes: {ex.Message}");
+                Logger.Warn("Error al cargar clientes frecuentes.", ex);
             }
         }
 

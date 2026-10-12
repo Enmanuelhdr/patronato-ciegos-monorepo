@@ -17,6 +17,8 @@ namespace Patronato.Caja.Services
     // no hay conexión, devuelven el último dato bueno que se tenga en memoria.
     public class ApiService
     {
+        private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger(typeof(ApiService));
+
         private static readonly JsonSerializerOptions _jsonOptions = new()
         {
             PropertyNameCaseInsensitive = true
@@ -36,9 +38,27 @@ namespace Patronato.Caja.Services
         // mientras la venta sigue encolada). Se limpia en cuanto vuelve a llegar un catálogo real.
         private static readonly Dictionary<int, int> _ajustesStockOffline = new();
 
+        private static bool _sinConexionGateway;
+
         // True mientras la última operación con el Gateway falló por falta de conexión.
-        // MainWindow lo consulta para avisar en la barra de estado.
-        public static bool SinConexionGateway { get; private set; }
+        // MainWindow lo consulta para avisar en la barra de estado. Loguea solo en la
+        // transición (se perdió / se recuperó la conexión), no en cada llamada, para no
+        // inundar el log con una línea por cada consulta mientras la caída dura.
+        public static bool SinConexionGateway
+        {
+            get => _sinConexionGateway;
+            private set
+            {
+                if (_sinConexionGateway != value)
+                {
+                    if (value)
+                        Logger.Warn("Se perdió la conexión con el Gateway.");
+                    else
+                        Logger.Info("Conexión con el Gateway restablecida.");
+                }
+                _sinConexionGateway = value;
+            }
+        }
 
         // Traduce una TransaccionResponse del Gateway al contrato (Success, Message, Recibo)
         // que ya usan las vistas. "01" (encolada por el propio Gateway porque el Core está
@@ -101,6 +121,7 @@ namespace Patronato.Caja.Services
 
                 if (respuesta.CodigoRespuesta != "00")
                 {
+                    Logger.Warn($"Intento de login rechazado para usuario='{username}': {respuesta.Mensaje}");
                     return (false, string.IsNullOrWhiteSpace(respuesta.Mensaje) ? "Credenciales inválidas." : respuesta.Mensaje, null);
                 }
 
@@ -117,6 +138,7 @@ namespace Patronato.Caja.Services
                 // Agendar citas, otorgar préstamos y gestionar empleados son tareas de Recepción/Web.
                 if (data.Rol != "Cajero" && data.Rol != "Administrador")
                 {
+                    Logger.Warn($"Login rechazado para usuario='{username}': rol '{data.Rol}' no autorizado en esta terminal.");
                     return (false, $"El usuario tiene el rol '{data.Rol}'. Solo 'Cajero' o 'Administrador' pueden acceder a esta terminal de Caja.", null);
                 }
 
@@ -132,15 +154,18 @@ namespace Patronato.Caja.Services
                     HoraInicioTurno = DateTime.Now
                 };
 
+                Logger.Info($"Login exitoso: usuario='{username}' rol={session.Rol} sucursal='{session.SucursalNombre}'.");
                 return (true, "Inicio de sesión exitoso.", session);
             }
             catch (GatewayNoDisponibleException ex)
             {
                 SinConexionGateway = true;
+                Logger.Warn($"No se pudo iniciar sesión (usuario='{username}'): Gateway no disponible.", ex);
                 return (false, $"No se pudo conectar con el Gateway: {ex.Message}", null);
             }
             catch (Exception ex)
             {
+                Logger.Error($"Error inesperado al iniciar sesión (usuario='{username}').", ex);
                 return (false, $"No se pudo conectar con el Gateway: {ex.Message}", null);
             }
         }
@@ -210,6 +235,7 @@ namespace Patronato.Caja.Services
             var cajero = SessionManager.CurrentSession?.Nombre ?? "Caja Principal";
             var sucursal = SessionManager.CurrentSession?.SucursalNombre ?? "Sede Central";
             var clienteFinal = string.IsNullOrWhiteSpace(cliente) ? "Cliente de Contado" : cliente;
+            decimal total = items.Sum(i => i.Subtotal);
 
             var datos = new
             {
@@ -227,13 +253,13 @@ namespace Patronato.Caja.Services
                 // Cobro de dinero real: código VENTA_CARRITO por el socket del Gateway.
                 var respuesta = await _gateway.EnviarAsync("VENTA_CARRITO", datos);
                 SinConexionGateway = false;
+                Logger.Info($"Venta POS cobrada: cliente='{clienteFinal}' total={total:F2} metodoPago={metodoPago} cajero='{cajero}' -> {respuesta.CodigoRespuesta}.");
                 return TraducirRespuestaGateway(respuesta);
             }
-            catch (GatewayNoDisponibleException)
+            catch (GatewayNoDisponibleException ex)
             {
                 SinConexionGateway = true;
 
-                decimal total = items.Sum(i => i.Subtotal);
                 bool esEfectivo = string.Equals(metodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase);
                 decimal recibido = esEfectivo && montoRecibido > 0 ? montoRecibido : total;
                 decimal devuelta = esEfectivo ? Math.Max(0, recibido - total) : 0;
@@ -258,11 +284,13 @@ namespace Patronato.Caja.Services
                     _ajustesStockOffline[it.ProductoId] = (_ajustesStockOffline.TryGetValue(it.ProductoId, out var v) ? v : 0) + it.Cantidad;
 
                 OfflineQueueService.Encolar("VENTA_CARRITO", datos, recibo.NumeroRecibo);
+                Logger.Warn($"Gateway no disponible: venta POS encolada localmente como '{recibo.NumeroRecibo}' (total={total:F2}).", ex);
 
                 return (true, "Sin conexión con el Gateway: venta registrada localmente. Se sincronizará automáticamente.", recibo);
             }
             catch (Exception ex)
             {
+                Logger.Error($"Error inesperado al cobrar venta POS (cliente='{clienteFinal}', total={total:F2}).", ex);
                 return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
             }
         }
@@ -310,9 +338,10 @@ namespace Patronato.Caja.Services
                 // Código MASAJE_COBRAR: cobro de dinero real, debe ir por el Gateway.
                 var respuesta = await _gateway.EnviarAsync("MASAJE_COBRAR", datos);
                 SinConexionGateway = false;
+                Logger.Info($"Masaje TACTO cobrado: sesion #{sesion.Id} cliente='{sesion.NombreCliente}' monto={sesion.PrecioTarifa:F2} metodoPago={metodoPago} -> {respuesta.CodigoRespuesta}.");
                 return TraducirRespuestaGateway(respuesta);
             }
-            catch (GatewayNoDisponibleException)
+            catch (GatewayNoDisponibleException ex)
             {
                 SinConexionGateway = true;
 
@@ -339,11 +368,13 @@ namespace Patronato.Caja.Services
                 };
 
                 OfflineQueueService.Encolar("MASAJE_COBRAR", datos, recibo.NumeroRecibo);
+                Logger.Warn($"Gateway no disponible: cobro de masaje (sesión #{sesion.Id}) encolado localmente como '{recibo.NumeroRecibo}'.", ex);
 
                 return (true, "Sin conexión con el Gateway: masaje cobrado localmente. Se sincronizará automáticamente.", recibo);
             }
             catch (Exception ex)
             {
+                Logger.Error($"Error inesperado al cobrar masaje (sesión #{sesion.Id}).", ex);
                 return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
             }
         }
@@ -419,9 +450,10 @@ namespace Patronato.Caja.Services
                         recibo = JsonSerializer.Deserialize<TransaccionCajaDto>(reciboEl.GetRawText(), _jsonOptions);
                 }
 
+                Logger.Info($"Abono a préstamo #{prestamo.Id} aplicado: monto={monto:F2} metodoPago={metodoPago} -> {respuesta.CodigoRespuesta}.");
                 return (success, respuesta.Mensaje, nuevoSaldo, recibo);
             }
-            catch (GatewayNoDisponibleException)
+            catch (GatewayNoDisponibleException ex)
             {
                 SinConexionGateway = true;
 
@@ -450,11 +482,13 @@ namespace Patronato.Caja.Services
                 };
 
                 OfflineQueueService.Encolar("PRESTAMO_ABONAR", datos, recibo.NumeroRecibo);
+                Logger.Warn($"Gateway no disponible: abono a préstamo #{prestamo.Id} encolado localmente como '{recibo.NumeroRecibo}'.", ex);
 
                 return (true, "Sin conexión con el Gateway: abono registrado localmente. Se sincronizará automáticamente.", nuevoSaldoEstimado, recibo);
             }
             catch (Exception ex)
             {
+                Logger.Error($"Error inesperado al abonar préstamo #{prestamo.Id}.", ex);
                 return (false, $"Error al comunicar con el Gateway: {ex.Message}", 0, null);
             }
         }
@@ -483,9 +517,10 @@ namespace Patronato.Caja.Services
                 // Código DONACION_REGISTRAR: cobro de dinero real, debe ir por el Gateway.
                 var respuesta = await _gateway.EnviarAsync("DONACION_REGISTRAR", datos);
                 SinConexionGateway = false;
+                Logger.Info($"Donación registrada: donante='{donacion.Donante}' monto={donacion.Monto:F2} metodoPago={donacion.MetodoPago} -> {respuesta.CodigoRespuesta}.");
                 return TraducirRespuestaGateway(respuesta);
             }
-            catch (GatewayNoDisponibleException)
+            catch (GatewayNoDisponibleException ex)
             {
                 SinConexionGateway = true;
 
@@ -507,11 +542,13 @@ namespace Patronato.Caja.Services
                 };
 
                 OfflineQueueService.Encolar("DONACION_REGISTRAR", datos, recibo.NumeroRecibo);
+                Logger.Warn($"Gateway no disponible: donación de '{donacion.Donante}' encolada localmente como '{recibo.NumeroRecibo}'.", ex);
 
                 return (true, "Sin conexión con el Gateway: donación registrada localmente. Se sincronizará automáticamente.", recibo);
             }
             catch (Exception ex)
             {
+                Logger.Error($"Error inesperado al registrar donación de '{donacion.Donante}'.", ex);
                 return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
             }
         }
@@ -636,6 +673,7 @@ namespace Patronato.Caja.Services
                     SinConexionGateway = false;
                     OfflineQueueService.QuitarPrimero();
                     exitosas++;
+                    Logger.Info($"Sincronizada con el Gateway la transacción {item.Codigo} ('{item.NumeroReciboProvisional}') -> {respuesta.CodigoRespuesta} (quedan {OfflineQueueService.CantidadPendientes} pendiente(s)).");
                 }
                 catch (GatewayNoDisponibleException)
                 {

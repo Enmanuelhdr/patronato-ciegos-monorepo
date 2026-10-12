@@ -23,6 +23,8 @@ namespace Patronato.Caja.Services
     // nivel solo se preocupa por su propio siguiente salto.
     public static class OfflineQueueService
     {
+        private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger(typeof(OfflineQueueService));
+
         private static readonly string RutaCola = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PatronatoCaja", "cola_pendientes.json");
@@ -94,9 +96,10 @@ namespace Patronato.Caja.Services
                     return JsonSerializer.Deserialize<List<ColaItem>>(json) ?? new List<ColaItem>();
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 // Archivo corrupto o ilegible: se empieza con la cola vacía en vez de tumbar la Caja.
+                Logger.Error("No se pudo leer la cola de pendientes hacia el Gateway; se empieza vacía.", ex);
             }
             return new List<ColaItem>();
         }
@@ -109,10 +112,11 @@ namespace Patronato.Caja.Services
                 Directory.CreateDirectory(dir);
                 File.WriteAllText(RutaCola, JsonSerializer.Serialize(Pendientes));
             }
-            catch
+            catch (Exception ex)
             {
                 // Si no se puede persistir, la transacción sigue en memoria para este proceso;
                 // se reintentará igual mientras la app no se cierre.
+                Logger.Error("No se pudo persistir la cola de pendientes hacia el Gateway.", ex);
             }
         }
     }

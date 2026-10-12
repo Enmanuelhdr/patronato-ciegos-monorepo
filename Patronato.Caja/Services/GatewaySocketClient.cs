@@ -42,6 +42,7 @@ namespace Patronato.Caja.Services
     // transacción, igual que la Web lo hace vía REST (/api/gateway/transaccion).
     public class GatewaySocketClient
     {
+        private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger(typeof(GatewaySocketClient));
         private static readonly UTF8Encoding Utf8SinBom = new(encoderShouldEmitUTF8Identifier: false);
         private static readonly JsonSerializerOptions JsonOpciones = new(JsonSerializerDefaults.Web);
         private static int _stanCounter = 0;
@@ -62,11 +63,15 @@ namespace Patronato.Caja.Services
             {
                 var conexion = client.ConnectAsync(host, port);
                 if (await Task.WhenAny(conexion, Task.Delay(TimeSpan.FromSeconds(3))) != conexion)
+                {
+                    Logger.Warn($"Tiempo de espera agotado conectando al Gateway ({host}:{port}) para {codigoTransaccion} STAN={request.Stan}.");
                     throw new GatewayNoDisponibleException($"Tiempo de espera agotado conectando al Gateway ({host}:{port}).");
+                }
                 await conexion;
             }
             catch (SocketException ex)
             {
+                Logger.Warn($"No se pudo conectar al Gateway ({host}:{port}) para {codigoTransaccion} STAN={request.Stan}.", ex);
                 throw new GatewayNoDisponibleException($"No se pudo conectar al Gateway ({host}:{port}): {ex.Message}", ex);
             }
 
@@ -78,7 +83,10 @@ namespace Patronato.Caja.Services
 
             var lecturaTask = reader.ReadLineAsync();
             if (await Task.WhenAny(lecturaTask, Task.Delay(TimeSpan.FromSeconds(10))) != lecturaTask)
+            {
+                Logger.Error($"El Gateway no respondió a tiempo para {codigoTransaccion} STAN={request.Stan}.");
                 throw new TimeoutException("El Gateway no respondió a tiempo.");
+            }
 
             var linea = await lecturaTask
                 ?? throw new IOException("El Gateway cerró la conexión sin responder.");
