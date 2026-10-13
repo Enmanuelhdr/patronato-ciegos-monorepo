@@ -1,12 +1,13 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { loginApi } from "../api/endpoints";
-import { ApiError } from "../api/client";
+import { ApiError, alVencerToken, fijarTokenSesion } from "../api/client";
 
 export interface SesionUsuario {
   usuarioId: number;
   nombre: string;
   rol: string;
   sucursalId: number;
+  token: string;
 }
 
 interface AuthContextValue {
@@ -30,10 +31,27 @@ function leerSesionGuardada(): SesionUsuario | null {
   }
 }
 
+function sesionInicial(): SesionUsuario | null {
+  const guardada = leerSesionGuardada();
+  fijarTokenSesion(guardada?.token ?? null); // restaura el JWT en el cliente HTTP tras recargar la página
+  return guardada;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [sesion, setSesion] = useState<SesionUsuario | null>(leerSesionGuardada());
+  const [sesion, setSesion] = useState<SesionUsuario | null>(sesionInicial);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function logout() {
+    setSesion(null);
+    fijarTokenSesion(null);
+    sessionStorage.removeItem(CLAVE_SESION);
+  }
+
+  // Si el Core rechaza el JWT (venció o ya no es válido) en cualquier request, cierra la sesión local.
+  useEffect(() => {
+    alVencerToken(logout);
+  }, []);
 
   async function login(usuario: string, password: string) {
     setCargando(true);
@@ -45,8 +63,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         nombre: data.nombre,
         rol: data.rol,
         sucursalId: data.sucursalId,
+        token: data.token,
       };
       setSesion(nuevaSesion);
+      fijarTokenSesion(data.token);
       sessionStorage.setItem(CLAVE_SESION, JSON.stringify(nuevaSesion));
       return true;
     } catch (ex) {
@@ -55,11 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setCargando(false);
     }
-  }
-
-  function logout() {
-    setSesion(null);
-    sessionStorage.removeItem(CLAVE_SESION);
   }
 
   return (

@@ -267,6 +267,10 @@ main {
   color: var(--slate-700);
   border: 1px solid var(--slate-300);
 }
+.btn-peligro {
+  background: #fee2e2;
+  color: #991b1b;
+}
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;

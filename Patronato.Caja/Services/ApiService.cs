@@ -154,14 +154,53 @@ namespace Patronato.Caja.Services
                     HoraInicioTurno = DateTime.Now
                 };
 
+                // Se recuerda este login para poder reabrir turno sin conexión la próxima vez
+                // (ver catch de GatewayNoDisponibleException más abajo).
+                OfflineCredentialsService.GuardarUltimoLogin(username, password, new LoginResponseResumen
+                {
+                    UsuarioId = session.UsuarioId,
+                    Nombre = session.Nombre,
+                    Rol = session.Rol,
+                    SucursalId = session.SucursalId,
+                    SucursalNombre = session.SucursalNombre
+                });
+
                 Logger.Info($"Login exitoso: usuario='{username}' rol={session.Rol} sucursal='{session.SucursalNombre}'.");
                 return (true, "Inicio de sesión exitoso.", session);
             }
             catch (GatewayNoDisponibleException ex)
             {
                 SinConexionGateway = true;
-                Logger.Warn($"No se pudo iniciar sesión (usuario='{username}'): Gateway no disponible.", ex);
-                return (false, $"No se pudo conectar con el Gateway: {ex.Message}", null);
+
+                // Sin Gateway no se puede validar contra el Core, pero si este usuario ya
+                // abrió turno antes en esta misma terminal, se valida contra esa última
+                // credencial conocida para no dejar la Caja inoperante por falta de conexión.
+                var offline = OfflineCredentialsService.ValidarOffline(username, password);
+                if (offline != null)
+                {
+                    if (offline.Rol != "Cajero" && offline.Rol != "Administrador")
+                    {
+                        Logger.Warn($"Login offline rechazado para usuario='{username}': rol '{offline.Rol}' no autorizado en esta terminal.");
+                        return (false, $"El usuario tiene el rol '{offline.Rol}'. Solo 'Cajero' o 'Administrador' pueden acceder a esta terminal de Caja.", null);
+                    }
+
+                    var sessionOffline = new UsuarioSession
+                    {
+                        UsuarioId = offline.UsuarioId,
+                        Nombre = offline.Nombre,
+                        Rol = offline.Rol,
+                        SucursalId = offline.SucursalId,
+                        SucursalNombre = offline.SucursalNombre,
+                        HoraInicioTurno = DateTime.Now,
+                        EsSesionOffline = true
+                    };
+
+                    Logger.Warn($"Login sin conexión: usuario='{username}' validado contra credenciales guardadas (último login: {offline.UltimoLoginExitoso}).");
+                    return (true, "Sin conexión con el Gateway: sesión iniciada con las credenciales guardadas del último ingreso. Se validará de nuevo cuando vuelva la conexión.", sessionOffline);
+                }
+
+                Logger.Warn($"No se pudo iniciar sesión (usuario='{username}'): Gateway no disponible y no hay credenciales guardadas localmente.", ex);
+                return (false, $"No se pudo conectar con el Gateway y este usuario nunca inició sesión antes en esta terminal: {ex.Message}", null);
             }
             catch (Exception ex)
             {

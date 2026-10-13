@@ -53,6 +53,21 @@ export const EtapaTexto: Record<EtapaRehabilitacion, string> = {
   2: "Profesional (inserción laboral)",
 };
 
+export type TipoServicioCita = 1 | 2 | 3 | 4;
+export const TipoServicioCitaTexto: Record<TipoServicioCita, string> = {
+  1: "Consulta Oftalmológica",
+  2: "Rehabilitación (Braille / bastón / oficios)",
+  3: "Masaje TACTO",
+  4: "Otro",
+};
+
+export type EstadoCita = 1 | 2 | 3;
+export const EstadoCitaTexto: Record<EstadoCita, string> = {
+  1: "Pendiente",
+  2: "Confirmada",
+  3: "Cancelada",
+};
+
 export interface Beneficiario {
   id: number;
   nombres: string;
@@ -91,6 +106,7 @@ export interface LoginResponse {
   nombre: string;
   rol: string;
   sucursalId: number;
+  token: string;
 }
 
 export interface ConsultaOftalmologica {
@@ -204,6 +220,19 @@ export interface TransaccionCaja {
   identificacionCliente?: string | null;
   detalleLineas?: string | null;
   referenciaId?: number | null;
+}
+
+export interface SolicitudCita {
+  id: number;
+  nombreSolicitante: string;
+  telefono: string;
+  correo: string;
+  tipoServicio: TipoServicioCita;
+  sedePreferida: SedeEnum;
+  fechaPreferida: string;
+  comentario?: string | null;
+  estado: EstadoCita;
+  fechaSolicitud: string;
 }
 
 export interface CuadreCaja {

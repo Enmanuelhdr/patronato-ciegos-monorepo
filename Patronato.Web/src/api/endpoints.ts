@@ -17,6 +17,7 @@ import type {
   PrestamoEmprendimiento,
   ProductoArticulo,
   SesionMasajeTacto,
+  SolicitudCita,
   Sucursal,
   TransaccionCaja,
   Usuario,
@@ -46,6 +47,9 @@ export const crearUsuario = (payload: CrearUsuarioPayload) => api.post<Usuario>(
 export const cambiarRolUsuario = (id: number, nuevoRol: number) =>
   api.put<{ mensaje: string }>(`/api/Usuarios/${id}/cambiar-rol?nuevoRol=${nuevoRol}`);
 
+export const editarUsuario = (id: number, payload: Usuario) => api.put<{ mensaje: string }>(`/api/Usuarios/${id}`, payload);
+export const desactivarUsuario = (id: number) => api.delete<{ mensaje: string }>(`/api/Usuarios/${id}`);
+
 // ---------- Beneficiarios ----------
 export const getBeneficiarios = () => api.get<Beneficiario[]>("/api/Beneficiarios");
 
@@ -60,6 +64,9 @@ export interface CrearBeneficiarioPayload {
 }
 export const crearBeneficiario = (payload: CrearBeneficiarioPayload) =>
   api.post<Beneficiario>("/api/Beneficiarios", payload);
+export const editarBeneficiario = (id: number, payload: Beneficiario) =>
+  api.put<void>(`/api/Beneficiarios/${id}`, payload);
+export const desactivarBeneficiario = (id: number) => api.delete<{ mensaje: string }>(`/api/Beneficiarios/${id}`);
 
 // ---------- Sucursales ----------
 export const getSucursales = () => api.get<Sucursal[]>("/api/Sucursales");
@@ -73,6 +80,26 @@ export interface CrearSucursalPayload {
 }
 export const crearSucursal = (payload: CrearSucursalPayload) => api.post<Sucursal>("/api/Sucursales", payload);
 export const editarSucursal = (id: number, payload: Sucursal) => api.put<void>(`/api/Sucursales/${id}`, payload);
+export const desactivarSucursal = (id: number) => api.delete<{ mensaje: string }>(`/api/Sucursales/${id}`);
+
+// ---------- Citas (solicitudes públicas de agendamiento) ----------
+export interface CrearCitaPayload {
+  nombreSolicitante: string;
+  telefono: string;
+  correo: string;
+  tipoServicio: number;
+  sedePreferida: number;
+  fechaPreferida: string;
+  comentario?: string;
+}
+// Pública: cualquier visitante la usa sin haber iniciado sesión (ver CitasController.PostCita).
+export const crearSolicitudCita = (payload: CrearCitaPayload) => api.post<SolicitudCita>("/api/Citas", payload);
+
+// Estas requieren sesión de Recepción/Admin/especialista (ver CitasController).
+export const getCitas = () => api.get<SolicitudCita[]>("/api/Citas");
+export const confirmarCita = (id: number) => api.put<{ mensaje: string }>(`/api/Citas/${id}/confirmar`);
+export const cancelarCita = (id: number) => api.put<{ mensaje: string }>(`/api/Citas/${id}/cancelar`);
+export const eliminarCita = (id: number) => api.delete<void>(`/api/Citas/${id}`);
 
 // ---------- Consultas Oftalmológicas ----------
 export const getConsultas = () => api.get<ConsultaOftalmologica[]>("/api/Consultas");
@@ -92,6 +119,8 @@ export const registrarDiagnostico = (id: number, diagnostico: string, tratamient
   api.put<{ mensaje: string }>(
     `/api/Consultas/${id}/diagnostico?diagnostico=${encodeURIComponent(diagnostico)}&tratamiento=${encodeURIComponent(tratamiento)}`
   );
+export const editarConsulta = (id: number, payload: ConsultaOftalmologica) => api.put<void>(`/api/Consultas/${id}`, payload);
+export const eliminarConsulta = (id: number) => api.delete<void>(`/api/Consultas/${id}`);
 
 // ---------- Rehabilitación ----------
 export const getInscripciones = () => api.get<InscripcionRehabilitacion[]>("/api/Rehabilitacion");
@@ -106,6 +135,9 @@ export const crearInscripcion = (payload: CrearInscripcionPayload) =>
   api.post<InscripcionRehabilitacion>("/api/Rehabilitacion", payload);
 
 export const graduarAlumno = (id: number) => api.put<{ mensaje: string }>(`/api/Rehabilitacion/${id}/graduar`);
+export const editarInscripcion = (id: number, payload: InscripcionRehabilitacion) =>
+  api.put<void>(`/api/Rehabilitacion/${id}`, payload);
+export const eliminarInscripcion = (id: number) => api.delete<void>(`/api/Rehabilitacion/${id}`);
 
 // ---------- Voluntarios y Donaciones (reporte) ----------
 export const getVoluntarios = () => api.get<Voluntario[]>("/api/Voluntarios");
@@ -119,6 +151,8 @@ export interface CrearVoluntarioPayload {
   activo: boolean;
 }
 export const crearVoluntario = (payload: CrearVoluntarioPayload) => api.post<Voluntario>("/api/Voluntarios", payload);
+export const editarVoluntario = (id: number, payload: Voluntario) => api.put<void>(`/api/Voluntarios/${id}`, payload);
+export const desactivarVoluntario = (id: number) => api.delete<{ mensaje: string }>(`/api/Voluntarios/${id}`);
 
 export const getDonaciones = () => api.get<Donacion[]>("/api/Voluntarios/donaciones");
 

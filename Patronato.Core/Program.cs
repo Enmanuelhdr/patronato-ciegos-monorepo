@@ -1,5 +1,11 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Patronato.Core.Data;
+using Patronato.Core.Monitoreo;
+using Patronato.Core.Servicios;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,10 +29,59 @@ builder.Services.AddCors(options =>
     });
 });
 
+// 2b. Autenticación JWT entre el Core y la Web: la Caja no participa de esto (no inicia
+// sesión de usuario, solo entra con X-Gateway-Key) — ver Servicios/JwtService.cs.
+var jwtSecretKey = builder.Configuration["Jwt:SecretKey"]!;
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Patronato.Core";
+builder.Services.AddSingleton<JwtService>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtIssuer,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecretKey)),
+        };
+    });
+builder.Services.AddAuthorization();
+
 // 3. Habilitar Controladores de API y Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// Swagger funciona aquí como panel de soporte/mantenimiento: acceso DIRECTO al Core,
+// a propósito, saltándose el Gateway. No es un hueco nuevo de seguridad — el botón
+// "Authorize" solo pide la misma X-Gateway-Key que ya otorga acceso total vía Gateway;
+// esto simplemente le da un segundo cliente a esa credencial para depuración/soporte.
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Patronato.Core — Panel de soporte (acceso directo, bypass del Gateway)",
+        Version = "v1",
+        Description = "Uso exclusivo de soporte/mantenimiento interno. En operación normal, Caja y Web " +
+                      "hablan con este Core únicamente a través del API Gateway."
+    });
+
+    c.AddSecurityDefinition("GatewayKey", new OpenApiSecurityScheme
+    {
+        Name = "X-Gateway-Key",
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Description = "Pega aquí el mismo valor de Gateway:ApiKey para habilitar \"Try it out\" en cada endpoint."
+    });
+    c.AddSecurityRequirement(doc =>
+    {
+        var requerimiento = new OpenApiSecurityRequirement();
+        requerimiento.Add(new OpenApiSecuritySchemeReference("GatewayKey", doc, null), new List<string>());
+        return requerimiento;
+    });
+});
 
 var app = builder.Build();
 
@@ -101,6 +156,10 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.MapMonitorEndpoints(gatewayApiKey);
+app.MapOperacionesEndpoints(gatewayApiKey);
+
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 

@@ -31,6 +31,11 @@ public class ReverseProxyService
         proxyRequest.Headers.Accept.Clear();
         proxyRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
+        // Reenvía el JWT de sesión del usuario de la Web (el Core lo valida con [Authorize]
+        // en los endpoints exclusivos de Recepción/Admin). La Caja nunca manda este header.
+        if (context.Request.Headers.TryGetValue("Authorization", out var autorizacion) && !string.IsNullOrWhiteSpace(autorizacion))
+            proxyRequest.Headers.TryAddWithoutValidation("Authorization", autorizacion.ToString());
+
         // La Caja también usa este reenvío genérico para sus consultas de solo lectura
         // (login, catálogo, listados); distingue el origen real en vez de asumir "Web".
         var origen = context.Request.Headers.TryGetValue("X-Origen", out var origenHeader) && !string.IsNullOrWhiteSpace(origenHeader)

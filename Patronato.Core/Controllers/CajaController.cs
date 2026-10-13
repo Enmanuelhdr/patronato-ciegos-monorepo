@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
@@ -460,7 +461,9 @@ namespace Patronato.Core.Controllers
         }
 
         // POST: api/caja/crear-masaje (Agendar nueva cita de masaje TACTO)
+        // Exclusivo de la Web (Recepción/Admin agenda; Caja solo cobra) — requiere JWT.
         [HttpPost("crear-masaje")]
+        [Authorize(Roles = "Administrador,Recepcionista")]
         public async Task<IActionResult> CrearMasaje([FromBody] CrearMasajeRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.NombreCliente))
@@ -485,7 +488,9 @@ namespace Patronato.Core.Controllers
         }
 
         // POST: api/caja/crear-prestamo (Otorgar nuevo crédito a beneficiario)
+        // Exclusivo de la Web (otorgar es decisión de Recepción/Admin; Caja solo abona) — requiere JWT.
         [HttpPost("crear-prestamo")]
+        [Authorize(Roles = "Administrador,Recepcionista")]
         public async Task<IActionResult> CrearPrestamo([FromBody] CrearPrestamoRequest request)
         {
             var beneficiario = await _context.Beneficiarios.FindAsync(request.BeneficiarioId);
@@ -530,7 +535,9 @@ namespace Patronato.Core.Controllers
         }
 
         // POST: api/caja/crear-orden (Recepción genera orden de insumos o cotización)
+        // Exclusivo de la Web (Caja solo la cobra vía VENTA_CARRITO) — requiere JWT.
         [HttpPost("crear-orden")]
+        [Authorize(Roles = "Administrador,Recepcionista")]
         public async Task<IActionResult> CrearOrden([FromBody] CrearOrdenRequest request)
         {
             if (request == null || request.Items == null || !request.Items.Any())

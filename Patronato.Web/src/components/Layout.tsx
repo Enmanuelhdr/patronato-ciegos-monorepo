@@ -10,9 +10,12 @@ interface ItemNav {
 
 const NAV: ItemNav[] = [
   { ruta: "/panel", etiqueta: "Panel General", icono: "📊" },
+  { ruta: "/panel/citas", etiqueta: "Solicitudes de Cita", icono: "🗓️", roles: ["Administrador", "Recepcionista", "MedicoOftalmologo", "InstructorRehabilitacion"] },
   { ruta: "/panel/beneficiarios", etiqueta: "Beneficiarios", icono: "🧑‍🦯" },
-  { ruta: "/panel/consultas", etiqueta: "Consultas Oftalmológicas", icono: "👁️", roles: ["Administrador", "Médico Oftalmólogo", "Recepcionista"] },
-  { ruta: "/panel/rehabilitacion", etiqueta: "Rehabilitación", icono: "📚", roles: ["Administrador", "Instructor Rehabilitación", "Recepcionista"] },
+  // roles en el formato plano de RolUsuario.ToString() (sin tilde/espacio): es lo que
+  // realmente trae sesion.rol desde el login/JWT del Core (ver Patronato.Core/Enums/RolUsuario.cs).
+  { ruta: "/panel/consultas", etiqueta: "Consultas Oftalmológicas", icono: "👁️", roles: ["Administrador", "MedicoOftalmologo", "Recepcionista"] },
+  { ruta: "/panel/rehabilitacion", etiqueta: "Rehabilitación", icono: "📚", roles: ["Administrador", "InstructorRehabilitacion", "Recepcionista"] },
   { ruta: "/panel/masajes", etiqueta: "Masajes TACTO", icono: "💆", roles: ["Administrador", "Recepcionista"] },
   { ruta: "/panel/prestamos", etiqueta: "Préstamos de Emprendimiento", icono: "💳", roles: ["Administrador", "Recepcionista"] },
   { ruta: "/panel/ordenes", etiqueta: "Órdenes de Pedido", icono: "📋", roles: ["Administrador", "Recepcionista"] },

@@ -3,6 +3,8 @@ import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
+import { AgendarCitaPage } from "./pages/AgendarCitaPage";
+import { CitasPage } from "./pages/CitasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { BeneficiariosPage } from "./pages/BeneficiariosPage";
 import { ConsultasPage } from "./pages/ConsultasPage";
@@ -18,6 +20,7 @@ import { UsuariosPage } from "./pages/UsuariosPage";
 
 const SOLO_ADMIN = ["Administrador"];
 const RECEPCION_O_ADMIN = ["Administrador", "Recepcionista"];
+const GESTIONA_CITAS = ["Administrador", "Recepcionista", "MedicoOftalmologo", "InstructorRehabilitacion"];
 
 export default function App() {
   return (
@@ -25,6 +28,7 @@ export default function App() {
       {/* Pública: lo primero que ve cualquier visitante, sin necesidad de iniciar sesión */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/agendar-cita" element={<AgendarCitaPage />} />
 
       {/* Portal interno del personal (Recepción / Administración) */}
       <Route
@@ -36,6 +40,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="citas" element={<ProtectedRoute roles={GESTIONA_CITAS}><CitasPage /></ProtectedRoute>} />
         <Route path="beneficiarios" element={<BeneficiariosPage />} />
         <Route path="consultas" element={<ConsultasPage />} />
         <Route path="rehabilitacion" element={<RehabilitacionPage />} />

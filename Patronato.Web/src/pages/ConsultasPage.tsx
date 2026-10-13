@@ -2,25 +2,30 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { DataTable, type Columna } from "../components/DataTable";
-import { crearConsulta, getBeneficiarios, getConsultas, registrarDiagnostico } from "../api/endpoints";
+import { crearConsulta, editarConsulta, eliminarConsulta, getBeneficiarios, getConsultas, registrarDiagnostico } from "../api/endpoints";
 import { ApiError } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { SedeTexto, type ConsultaOftalmologica } from "../api/types";
 
 export function ConsultasPage() {
   const qc = useQueryClient();
+  const { sesion } = useAuth();
   const consultas = useQuery({ queryKey: ["consultas"], queryFn: getConsultas });
   const beneficiarios = useQuery({ queryKey: ["beneficiarios"], queryFn: getBeneficiarios });
   const [mostrarForm, setMostrarForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diagnosticoEdit, setDiagnosticoEdit] = useState<{ id: number; diagnostico: string; tratamiento: string } | null>(null);
+  const [editando, setEditando] = useState<ConsultaOftalmologica | null>(null);
 
   const [form, setForm] = useState({ beneficiarioId: 0, sede: 1, oftalmologo: "", tarifaConsulta: 300, cubiertoPorARS: false });
+
+  const invalidar = () => qc.invalidateQueries({ queryKey: ["consultas"] });
 
   const crear = useMutation({
     mutationFn: () =>
       crearConsulta({ ...form, diagnosticoOcular: "Pendiente de evaluación", tratamientoPrescrito: "" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["consultas"] });
+      invalidar();
       setMostrarForm(false);
       setError(null);
     },
@@ -31,10 +36,21 @@ export function ConsultasPage() {
     mutationFn: (p: { id: number; diagnostico: string; tratamiento: string }) =>
       registrarDiagnostico(p.id, p.diagnostico, p.tratamiento),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["consultas"] });
+      invalidar();
       setDiagnosticoEdit(null);
     },
   });
+
+  const editar = useMutation({
+    mutationFn: (c: ConsultaOftalmologica) => editarConsulta(c.id, c),
+    onSuccess: () => {
+      invalidar();
+      setEditando(null);
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : "No se pudo editar la consulta."),
+  });
+
+  const eliminar = useMutation({ mutationFn: eliminarConsulta, onSuccess: invalidar });
 
   const columnas: Columna<ConsultaOftalmologica>[] = [
     { encabezado: "Paciente", render: (c) => (c.beneficiario ? `${c.beneficiario.nombres} ${c.beneficiario.apellidos}` : `#${c.beneficiarioId}`) },
@@ -46,12 +62,26 @@ export function ConsultasPage() {
     {
       encabezado: "",
       render: (c) => (
-        <button
-          className="btn btn-secundario"
-          onClick={() => setDiagnosticoEdit({ id: c.id, diagnostico: c.diagnosticoOcular, tratamiento: c.tratamientoPrescrito })}
-        >
-          Asentar diagnóstico
-        </button>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            className="btn btn-secundario"
+            onClick={() => setDiagnosticoEdit({ id: c.id, diagnostico: c.diagnosticoOcular, tratamiento: c.tratamientoPrescrito })}
+          >
+            Asentar diagnóstico
+          </button>
+          <button className="btn btn-secundario" onClick={() => setEditando(c)}>Editar</button>
+          {sesion?.rol === "Administrador" && (
+            <button
+              className="btn btn-peligro"
+              disabled={eliminar.isPending}
+              onClick={() => {
+                if (confirm("¿Eliminar este registro de consulta?")) eliminar.mutate(c.id);
+              }}
+            >
+              Eliminar
+            </button>
+          )}
+        </div>
       ),
     },
   ];
@@ -134,6 +164,44 @@ export function ConsultasPage() {
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <button className="btn btn-exito" type="submit" disabled={diagnosticar.isPending}>Guardar diagnóstico</button>
               <button className="btn btn-secundario" type="button" onClick={() => setDiagnosticoEdit(null)}>Cancelar</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editando && (
+        <div className="panel">
+          <h2>Editar consulta #{editando.id}</h2>
+          {error && <div className="alerta alerta-error">{error}</div>}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              editar.mutate(editando);
+            }}
+          >
+            <div className="form-grid">
+              <div className="campo">
+                <label>Oftalmólogo</label>
+                <input required value={editando.oftalmologo} onChange={(e) => setEditando({ ...editando, oftalmologo: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label>Sede</label>
+                <select value={editando.sede} onChange={(e) => setEditando({ ...editando, sede: Number(e.target.value) as ConsultaOftalmologica["sede"] })}>
+                  {Object.entries(SedeTexto).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                </select>
+              </div>
+              <div className="campo">
+                <label>Tarifa (RD$)</label>
+                <input required type="number" min={0} value={editando.tarifaConsulta} onChange={(e) => setEditando({ ...editando, tarifaConsulta: Number(e.target.value) })} />
+              </div>
+              <div className="campo campo-checkbox">
+                <input type="checkbox" id="ars-edit" checked={editando.cubiertoPorARS} onChange={(e) => setEditando({ ...editando, cubiertoPorARS: e.target.checked })} />
+                <label htmlFor="ars-edit">Cubierto por ARS/SENASA</label>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button className="btn btn-exito" type="submit" disabled={editar.isPending}>Guardar cambios</button>
+              <button className="btn btn-secundario" type="button" onClick={() => setEditando(null)}>Cancelar</button>
             </div>
           </form>
         </div>

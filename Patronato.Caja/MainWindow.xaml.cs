@@ -118,7 +118,7 @@ namespace Patronato.Caja
             string rol = sesion?.Rol ?? "Cajero";
             TxtInfoCajero.Text = sesion?.Nombre ?? "Cajero General";
             TxtInfoSucursal.Text = sesion?.SucursalNombre ?? "Santo Domingo";
-            TxtInfoRol.Text = rol;
+            TxtInfoRol.Text = sesion?.EsSesionOffline == true ? $"{rol} (sesión sin conexión)" : rol;
 
             bool esAdmin = rol == "Administrador";
             BadgeRol.Background = new System.Windows.Media.SolidColorBrush(esAdmin

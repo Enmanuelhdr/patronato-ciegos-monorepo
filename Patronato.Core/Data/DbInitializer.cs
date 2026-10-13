@@ -26,6 +26,23 @@ namespace Patronato.Core.Data
                 );
             ");
 
+            // Igual que arriba: EnsureCreated() (ver Program.cs) no agrega tablas nuevas a una
+            // base de datos que ya existía, así que SolicitudesCita necesita el mismo parche.
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS SolicitudesCita (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    NombreSolicitante TEXT NOT NULL,
+                    Telefono TEXT NOT NULL,
+                    Correo TEXT NOT NULL,
+                    TipoServicio INTEGER NOT NULL,
+                    SedePreferida INTEGER NOT NULL,
+                    FechaPreferida TEXT NOT NULL,
+                    Comentario TEXT,
+                    Estado INTEGER NOT NULL,
+                    FechaSolicitud TEXT NOT NULL
+                );
+            ");
+
             // Si no hay órdenes de pedido pendientes, sembrar una orden de muestra creada por Recepción
             if (!context.OrdenesPedidoCaja.Any())
             {
@@ -114,6 +131,26 @@ namespace Patronato.Core.Data
                         Correo = "recepcion@patronatociegos.org.do",
                         PasswordHash = "recepcion123",
                         Rol = RolUsuario.Recepcionista,
+                        SucursalId = sucursalCentral.Id,
+                        Activo = true
+                    },
+                    new Usuario
+                    {
+                        NombreCompleto = "Dra. Carmen Féliz",
+                        NombreUsuario = "medico",
+                        Correo = "oftalmologia@patronatociegos.org.do",
+                        PasswordHash = "medico123",
+                        Rol = RolUsuario.MedicoOftalmologo,
+                        SucursalId = sucursalCentral.Id,
+                        Activo = true
+                    },
+                    new Usuario
+                    {
+                        NombreCompleto = "Rafael Núñez",
+                        NombreUsuario = "instructor",
+                        Correo = "rehabilitacion@patronatociegos.org.do",
+                        PasswordHash = "instructor123",
+                        Rol = RolUsuario.InstructorRehabilitacion,
                         SucursalId = sucursalCentral.Id,
                         Activo = true
                     }

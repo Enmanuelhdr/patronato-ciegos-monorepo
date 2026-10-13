@@ -17,6 +17,10 @@ namespace Patronato.Caja.Models
         public int SucursalId { get; set; }
         public string SucursalNombre { get; set; } = "Sede Central Santo Domingo";
         public DateTime HoraInicioTurno { get; set; } = DateTime.Now;
+
+        // True cuando este turno se abrió sin conexión con el Gateway, validando contra las
+        // credenciales guardadas del último login exitoso (ver OfflineCredentialsService).
+        public bool EsSesionOffline { get; set; } = false;
     }
 
     public class LoginResponse

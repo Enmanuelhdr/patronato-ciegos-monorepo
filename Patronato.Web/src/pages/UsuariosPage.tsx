@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../components/PageHeader";
 import { DataTable, type Columna } from "../components/DataTable";
-import { cambiarRolUsuario, crearUsuario, getSucursales, getUsuarios } from "../api/endpoints";
+import { cambiarRolUsuario, crearUsuario, desactivarUsuario, editarUsuario, getSucursales, getUsuarios } from "../api/endpoints";
 import { ApiError } from "../api/client";
 import { RolUsuarioTexto, type Usuario } from "../api/types";
 
@@ -12,13 +12,16 @@ export function UsuariosPage() {
   const sucursales = useQuery({ queryKey: ["sucursales"], queryFn: getSucursales });
   const [mostrarForm, setMostrarForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editando, setEditando] = useState<Usuario | null>(null);
 
   const [form, setForm] = useState({ nombreCompleto: "", nombreUsuario: "", correo: "", passwordHash: "", rol: 2, sucursalId: 1 });
+
+  const invalidar = () => qc.invalidateQueries({ queryKey: ["usuarios"] });
 
   const crear = useMutation({
     mutationFn: () => crearUsuario({ ...form, activo: true }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["usuarios"] });
+      invalidar();
       setMostrarForm(false);
       setForm({ nombreCompleto: "", nombreUsuario: "", correo: "", passwordHash: "", rol: 2, sucursalId: 1 });
       setError(null);
@@ -28,8 +31,19 @@ export function UsuariosPage() {
 
   const cambiarRol = useMutation({
     mutationFn: (p: { id: number; rol: number }) => cambiarRolUsuario(p.id, p.rol),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["usuarios"] }),
+    onSuccess: invalidar,
   });
+
+  const editar = useMutation({
+    mutationFn: (u: Usuario) => editarUsuario(u.id, u),
+    onSuccess: () => {
+      invalidar();
+      setEditando(null);
+    },
+    onError: (e) => setError(e instanceof ApiError ? e.message : "No se pudo editar el empleado."),
+  });
+
+  const desactivar = useMutation({ mutationFn: desactivarUsuario, onSuccess: invalidar });
 
   const columnas: Columna<Usuario>[] = [
     { encabezado: "Nombre completo", render: (u) => u.nombreCompleto },
@@ -38,13 +52,32 @@ export function UsuariosPage() {
     { encabezado: "Sede", render: (u) => sucursales.data?.find((s) => s.id === u.sucursalId)?.nombre ?? `#${u.sucursalId}` },
     { encabezado: "Estado", render: (u) => <span className={`tag ${u.activo ? "tag-verde" : "tag-gris"}`}>{u.activo ? "Activo" : "Inactivo"}</span> },
     {
-      encabezado: "Rol",
+      encabezado: "Rol (tipo de acceso)",
       render: (u) => (
         <select value={u.rol} onChange={(e) => cambiarRol.mutate({ id: u.id, rol: Number(e.target.value) })} disabled={cambiarRol.isPending}>
           {Object.entries(RolUsuarioTexto).map(([v, t]) => (
             <option key={v} value={v}>{t}</option>
           ))}
         </select>
+      ),
+    },
+    {
+      encabezado: "Acciones",
+      render: (u) => (
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="btn btn-secundario" onClick={() => setEditando(u)}>Editar</button>
+          {u.activo && (
+            <button
+              className="btn btn-peligro"
+              disabled={desactivar.isPending}
+              onClick={() => {
+                if (confirm(`¿Desactivar la cuenta de "${u.nombreCompleto}"?`)) desactivar.mutate(u.id);
+              }}
+            >
+              Desactivar
+            </button>
+          )}
+        </div>
       ),
     },
   ];
@@ -95,6 +128,40 @@ export function UsuariosPage() {
             <button className="btn btn-exito" style={{ marginTop: 14 }} type="submit" disabled={crear.isPending}>
               {crear.isPending ? "Guardando..." : "Registrar empleado"}
             </button>
+          </form>
+        </div>
+      )}
+
+      {editando && (
+        <div className="panel">
+          <h2>Editar empleado</h2>
+          {error && <div className="alerta alerta-error">{error}</div>}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              editar.mutate(editando);
+            }}
+          >
+            <div className="form-grid">
+              <div className="campo">
+                <label>Nombre completo</label>
+                <input required value={editando.nombreCompleto} onChange={(e) => setEditando({ ...editando, nombreCompleto: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label>Correo</label>
+                <input type="email" value={editando.correo} onChange={(e) => setEditando({ ...editando, correo: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label>Sucursal</label>
+                <select value={editando.sucursalId} onChange={(e) => setEditando({ ...editando, sucursalId: Number(e.target.value) })}>
+                  {sucursales.data?.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button className="btn btn-exito" type="submit" disabled={editar.isPending}>Guardar cambios</button>
+              <button className="btn btn-secundario" type="button" onClick={() => setEditando(null)}>Cancelar</button>
+            </div>
           </form>
         </div>
       )}

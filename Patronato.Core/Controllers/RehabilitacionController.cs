@@ -1,12 +1,15 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
 using Patronato.Core.Entities;
 
 namespace Patronato.Core.Controllers
 {
+    // Exclusivo de la Web (la Caja nunca llama este controlador): requiere JWT.
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Roles = "Administrador,InstructorRehabilitacion,Recepcionista")]
     public class RehabilitacionController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -54,6 +57,32 @@ namespace Patronato.Core.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { mensaje = "Beneficiario graduado exitosamente de esta etapa formativa." });
+        }
+
+        // 5. PUT: api/rehabilitacion/5 (Editar los datos generales de una inscripción)
+        [HttpPut("{id}")]
+        public async Task<IActionResult> PutInscripcion(int id, InscripcionRehabilitacion inscripcion)
+        {
+            if (id != inscripcion.Id)
+                return BadRequest("El ID no coincide.");
+
+            _context.Entry(inscripcion).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        // 6. DELETE: api/rehabilitacion/5 (Eliminar un registro erróneo) — solo Admin
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Administrador")]
+        public async Task<IActionResult> DeleteInscripcion(int id)
+        {
+            var inscripcion = await _context.InscripcionesRehabilitacion.FindAsync(id);
+            if (inscripcion == null)
+                return NotFound("Inscripción no encontrada.");
+
+            _context.InscripcionesRehabilitacion.Remove(inscripcion);
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
     }
 }

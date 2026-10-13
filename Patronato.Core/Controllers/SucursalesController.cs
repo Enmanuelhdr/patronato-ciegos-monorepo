@@ -1,4 +1,5 @@
 ﻿
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
@@ -30,16 +31,19 @@ namespace Patronato.Core.Controllers
                 return NotFound("Sucursal no encontrada.");
             return sucursal;
         }
-        // 3. POST: api/sucursales (Crear una nueva sucursal)
+        // 3. POST: api/sucursales (Crear una nueva sucursal) — solo Admin.
+        // Los GET se quedan públicos a propósito: la landing y la Caja (por socket) los usan sin login.
         [HttpPost]
+        [Authorize(Roles = "Administrador")]
         public async Task<ActionResult<Sucursal>> PostSucursal(Sucursal sucursal)
         {
             _context.Sucursales.Add(sucursal);
             await _context.SaveChangesAsync();
             return CreatedAtAction(nameof(GetSucursal), new { id = sucursal.Id }, sucursal);
         }
-        // 4. PUT: api/sucursales/1 (Editar dirección, teléfono o encargado)
+        // 4. PUT: api/sucursales/1 (Editar dirección, teléfono o encargado) — solo Admin
         [HttpPut("{id}")]
+        [Authorize(Roles = "Administrador")]
         public async Task<IActionResult> PutSucursal(int id, Sucursal sucursal)
         {
             if (id != sucursal.Id)
@@ -47,6 +51,20 @@ namespace Patronato.Core.Controllers
             _context.Entry(sucursal).State = EntityState.Modified;
             await _context.SaveChangesAsync();
             return NoContent();
+        }
+
+        // 5. DELETE: api/sucursales/1 (Desactivar una sucursal) — solo Admin
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Administrador")]
+        public async Task<IActionResult> DeleteSucursal(int id)
+        {
+            var sucursal = await _context.Sucursales.FindAsync(id);
+            if (sucursal == null)
+                return NotFound("Sucursal no encontrada.");
+
+            sucursal.Activa = false;
+            await _context.SaveChangesAsync();
+            return Ok(new { mensaje = "Sucursal desactivada." });
         }
     }
 }

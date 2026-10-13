@@ -62,8 +62,8 @@ export function LandingPage() {
             rehabilitación, emprendimiento, salud visual preventiva y acompañamiento comunitario.
           </p>
           <div className="landing-hero-acciones">
-            <a href="#programas" className="btn btn-primario">Conoce nuestros programas</a>
-            <a href="#contacto" className="btn btn-secundario">Cómo contactarnos</a>
+            <Link to="/agendar-cita" className="btn btn-primario">Agenda tu cita</Link>
+            <a href="#programas" className="btn btn-secundario">Conoce nuestros programas</a>
           </div>
         </div>
 
@@ -120,6 +120,9 @@ export function LandingPage() {
           <span>📍 Calle Huáscar Tejeda #54, Zona Universitaria, Santo Domingo, D.N.</span>
           <span>📞 (809) 533-2833</span>
         </div>
+        <Link to="/agendar-cita" className="btn btn-primario" style={{ marginTop: 16, display: "inline-block" }}>
+          Agendar una cita
+        </Link>
       </section>
 
       <footer className="landing-footer">
