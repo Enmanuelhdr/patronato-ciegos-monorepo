@@ -1,21 +1,48 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
+using Patronato.Core.Entities;
+using Patronato.Core.Servicios;
 
 namespace Patronato.Core.Monitoreo
 {
     // Panel de monitoreo del Core: acceso DIRECTO (fuera de /api, por eso no pasa por
     // el middleware de X-Gateway-Key), pensado solo para soporte/mantenimiento interno.
-    // Protegido con X-Admin-Key = el mismo valor de Gateway:ApiKey (ningún secreto nuevo).
+    // El acceso ya no es una clave compartida: se entra con usuario y contraseña reales
+    // (la misma tabla Usuario/CoreRole de siempre) y el rol determina qué se puede hacer
+    // — ver MonitorAuth y PermisosCore.MonitorVer/MonitorGestionar.
     public static class MonitorEndpoints
     {
-        public static void MapMonitorEndpoints(this WebApplication app, string? claveAdmin)
+        private record LoginRequest(string NombreUsuario, string Password);
+
+        public static void MapMonitorEndpoints(this WebApplication app)
         {
             app.MapGet("/monitor", () => Results.Content(PaginaHtml, "text/html"));
 
+            // Compartido con /monitor/operaciones (mismo token, mismo sessionStorage en el
+            // navegador): no pasa por el Gateway a propósito, igual que el resto del panel.
+            app.MapPost("/monitor/login", async (ApplicationDbContext db, IPasswordHasher<Usuario> hasher, JwtService jwt, LoginRequest body) =>
+            {
+                var resultado = await AutenticacionCoreService.IntentarLogin(db, hasher, body.NombreUsuario, body.Password);
+                if (!resultado.Exito)
+                    return Results.Json(new { mensaje = resultado.Error }, statusCode: resultado.StatusCodeError);
+
+                if (!resultado.Permisos.Contains(PermisosCore.MonitorVer))
+                    return Results.Json(new { mensaje = "Tu usuario no tiene acceso al panel de soporte." }, statusCode: 403);
+
+                return Results.Json(new
+                {
+                    nombre = resultado.Usuario!.NombreCompleto,
+                    rol = resultado.RolNombre,
+                    permisos = resultado.Permisos,
+                    token = jwt.GenerarToken(resultado.Usuario, resultado.RolNombre, resultado.Permisos),
+                });
+            });
+
             app.MapGet("/monitor/datos", async (HttpContext ctx, ApplicationDbContext db, string? nivel, string? origen, int? limite) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin))
-                    return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorVer))
+                    return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
 
                 var haceUnaHora = DateTime.Now.AddHours(-1);
                 var baseDatosOk = true;
@@ -86,7 +113,7 @@ namespace Patronato.Core.Monitoreo
   .punto.mal { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
   main { padding: 20px; max-width: 1200px; margin: 0 auto; }
   .login { max-width: 360px; margin: 80px auto; background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 24px; text-align: center; }
-  .login input { width: 100%; padding: 10px; margin: 12px 0; border-radius: 6px; border: 1px solid #334155; background: #0b1120; color: #e2e8f0; }
+  .login input { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #334155; background: #0b1120; color: #e2e8f0; }
   .login button, .toolbar button { background: #2563eb; color: white; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
   .login button:hover, .toolbar button:hover { background: #1d4ed8; }
   .oculto { display: none; }
@@ -115,8 +142,9 @@ namespace Patronato.Core.Monitoreo
 
 <div id="login" class="login">
   <h2>🔒 Monitor del Core</h2>
-  <p style="color:#94a3b8;font-size:13px;">Acceso directo de soporte/mantenimiento. Pega la clave del Gateway (X-Admin-Key).</p>
-  <input id="clave" type="password" placeholder="Clave de administración" />
+  <p style="color:#94a3b8;font-size:13px;">Acceso directo de soporte/mantenimiento. Inicia sesión con tu usuario del Core.</p>
+  <input id="usuario" placeholder="Usuario" autocomplete="username" />
+  <input id="clave" type="password" placeholder="Contraseña" autocomplete="current-password" />
   <button onclick="conectar()">Entrar</button>
   <p id="loginError" style="color:#f87171;font-size:12px;"></p>
 </div>
@@ -129,6 +157,8 @@ namespace Patronato.Core.Monitoreo
     </div>
     <div class="estado">
       <a href="/monitor/operaciones" style="color:#60a5fa;text-decoration:none;font-size:13px;margin-right:16px;">⚙ Operaciones →</a>
+      <span id="sesionTexto" style="color:#94a3b8;font-size:12px;margin-right:12px;"></span>
+      <button onclick="cerrarSesion()" style="background:#374151;font-size:12px;padding:6px 10px;">Salir</button>
       <span id="puntoEstado" class="punto"></span>
       <span id="textoEstado">Conectando...</span>
     </div>
@@ -173,21 +203,35 @@ namespace Patronato.Core.Monitoreo
 </div>
 
 <script>
-let clave = sessionStorage.getItem('adminKey') || '';
+let token = sessionStorage.getItem('monitorToken') || '';
 let timer = null;
 
-if (clave) conectar(true);
+if (token) conectar(true);
 
-function conectar(silencioso) {
-  if (!silencioso) clave = document.getElementById('clave').value.trim();
-  if (!clave) return;
-  fetch('/monitor/datos', { headers: { 'X-Admin-Key': clave } }).then(async r => {
-    if (r.status === 401) {
-      sessionStorage.removeItem('adminKey');
-      document.getElementById('loginError').textContent = 'Clave incorrecta.';
+async function conectar(silencioso) {
+  if (!silencioso) {
+    const usuario = document.getElementById('usuario').value.trim();
+    const clave = document.getElementById('clave').value;
+    if (!usuario || !clave) return;
+    const r = await fetch('/monitor/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombreUsuario: usuario, password: clave }) });
+    const datos = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      document.getElementById('loginError').textContent = datos.mensaje || 'No se pudo iniciar sesión.';
       return;
     }
-    sessionStorage.setItem('adminKey', clave);
+    token = datos.token;
+    sessionStorage.setItem('monitorToken', token);
+    sessionStorage.setItem('monitorSesion', JSON.stringify({ nombre: datos.nombre, rol: datos.rol }));
+  }
+
+  fetch('/monitor/datos', { headers: { 'Authorization': 'Bearer ' + token } }).then(async r => {
+    if (r.status === 401 || r.status === 403) {
+      sessionStorage.removeItem('monitorToken');
+      document.getElementById('loginError').textContent = 'Sesión inválida o sin acceso. Inicia sesión de nuevo.';
+      return;
+    }
+    const sesion = JSON.parse(sessionStorage.getItem('monitorSesion') || '{}');
+    document.getElementById('sesionTexto').textContent = sesion.nombre ? `${sesion.nombre} (${sesion.rol})` : '';
     document.getElementById('login').classList.add('oculto');
     document.getElementById('app').classList.remove('oculto');
     pintar(await r.json());
@@ -195,12 +239,18 @@ function conectar(silencioso) {
   }).catch(() => { document.getElementById('loginError').textContent = 'No se pudo conectar al Core.'; });
 }
 
+function cerrarSesion() {
+  sessionStorage.removeItem('monitorToken');
+  sessionStorage.removeItem('monitorSesion');
+  location.reload();
+}
+
 function cargar() {
   const nivel = document.getElementById('filtroNivel').value;
   const origen = document.getElementById('filtroOrigen').value;
   const qs = new URLSearchParams({ nivel, origen, limite: 150 });
-  fetch('/monitor/datos?' + qs, { headers: { 'X-Admin-Key': clave } }).then(async r => {
-    if (r.status === 401) { clearInterval(timer); location.reload(); return; }
+  fetch('/monitor/datos?' + qs, { headers: { 'Authorization': 'Bearer ' + token } }).then(async r => {
+    if (r.status === 401 || r.status === 403) { clearInterval(timer); cerrarSesion(); return; }
     pintar(await r.json());
   });
 }

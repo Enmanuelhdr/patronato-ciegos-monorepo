@@ -29,6 +29,7 @@ namespace Patronato.Caja
         private List<OrdenPedidoCajaDto> _ordenesPendientes = new();
         private int? _ordenSeleccionadaId = null;
         private List<SesionMasajeItem> _masajesPendientes = new();
+        private List<ConsultaItem> _consultasPendientes = new();
         private List<PrestamoItem> _prestamosActivos = new();
         private List<TransaccionCajaDto> _recibosHistorial = new();
 
@@ -134,6 +135,7 @@ namespace Patronato.Caja
                 CargarClientesFrecuentesAsync(),
                 CargarOrdenesPendientesAsync(),
                 CargarMasajesAsync(),
+                CargarConsultasAsync(),
                 CargarPrestamosAsync(),
                 CargarArqueoAsync()
             );
@@ -205,6 +207,10 @@ namespace Patronato.Caja
             else if (header.Contains("Masajes"))
             {
                 await CargarMasajesAsync();
+            }
+            else if (header.Contains("Consultas"))
+            {
+                await CargarConsultasAsync();
             }
             else if (header.Contains("Préstamos"))
             {
@@ -602,6 +608,110 @@ namespace Patronato.Caja
         }
 
         // =========================================================
+        // 2.1. MÓDULO DE CONSULTAS OFTALMOLÓGICAS
+        // =========================================================
+        private async Task CargarConsultasAsync()
+        {
+            _consultasPendientes = await _apiService.GetConsultasPendientesAsync();
+            GridConsultas.ItemsSource = null;
+            GridConsultas.ItemsSource = _consultasPendientes;
+            DesactivarCobroConsulta();
+        }
+
+        private async void BtnActualizarConsultas_Click(object sender, RoutedEventArgs e)
+        {
+            await CargarConsultasAsync();
+            SetEstado("Lista de consultas oftalmológicas actualizada.");
+        }
+
+        private void GridConsultas_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (GridConsultas.SelectedItem is ConsultaItem consulta)
+            {
+                TxtDetalleConsultaSeleccionada.Text = $"Consulta #{consulta.Id}: {consulta.NombrePaciente} | Oftalmólogo: {consulta.Oftalmologo}";
+                TxtTarifaConsulta.Text = $"RD$ {consulta.TarifaConsulta:N2}";
+                TxtMontoRecibidoConsulta.Text = consulta.TarifaConsulta.ToString("F2");
+                BtnCobrarConsulta.IsEnabled = true;
+            }
+            else
+            {
+                DesactivarCobroConsulta();
+            }
+        }
+
+        private void DesactivarCobroConsulta()
+        {
+            TxtDetalleConsultaSeleccionada.Text = "Selecciona una consulta de la lista superior para cobrar";
+            TxtTarifaConsulta.Text = "RD$ 0.00";
+            TxtMontoRecibidoConsulta.Text = "0.00";
+            BtnCobrarConsulta.IsEnabled = false;
+        }
+
+        private void CmbMetodoPagoConsulta_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (PanelMontoRecibidoConsulta == null || TxtMontoRecibidoConsulta == null) return;
+            string metodo = ((ComboBoxItem)CmbMetodoPagoConsulta.SelectedItem)?.Content?.ToString() ?? "Efectivo";
+            bool esEfectivo = metodo == "Efectivo";
+            PanelMontoRecibidoConsulta.Visibility = esEfectivo ? Visibility.Visible : Visibility.Collapsed;
+            TxtMontoRecibidoConsulta.IsEnabled = esEfectivo;
+        }
+
+        private async void BtnCobrarConsulta_Click(object sender, RoutedEventArgs e)
+        {
+            if (GridConsultas.SelectedItem is not ConsultaItem consulta)
+                return;
+
+            string metodo = ((ComboBoxItem)CmbMetodoPagoConsulta.SelectedItem)?.Content?.ToString() ?? "Efectivo";
+            decimal recibido = consulta.TarifaConsulta;
+
+            if (metodo == "Efectivo")
+            {
+                string rawTexto = TxtMontoRecibidoConsulta.Text?.Trim().Replace(",", "") ?? "";
+                if (!decimal.TryParse(rawTexto, NumberStyles.Any, CultureInfo.InvariantCulture, out recibido) || recibido < consulta.TarifaConsulta)
+                {
+                    MessageBox.Show($"El monto recibido es menor a la tarifa de la consulta (RD$ {consulta.TarifaConsulta:N2}).", "Monto Insuficiente", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+            }
+            else
+            {
+                recibido = consulta.TarifaConsulta;
+            }
+
+            BtnCobrarConsulta.IsEnabled = false;
+            SetEstado($"Cobrando consulta #{consulta.Id}...");
+
+            try
+            {
+                var (success, message, recibo) = await _apiService.CobrarConsultaAsync(consulta, metodo, recibido);
+                if (!success)
+                {
+                    MessageBox.Show(message, "Error al Cobrar Consulta", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                await CargarConsultasAsync();
+                await CargarArqueoAsync();
+
+                if (recibo != null)
+                {
+                    var preview = new ReceiptPreviewWindow(recibo) { Owner = this };
+                    preview.ShowDialog();
+                }
+                else
+                {
+                    MessageBox.Show(message, "Consulta Cobrada", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+                SetEstado("Consulta oftalmológica cobrada exitosamente.");
+            }
+            finally
+            {
+                BtnCobrarConsulta.IsEnabled = true;
+            }
+        }
+
+        // =========================================================
         // 3. MÓDULO DE ABONOS A PRÉSTAMOS
         // =========================================================
         private async Task CargarPrestamosAsync()
@@ -843,31 +953,11 @@ namespace Patronato.Caja
                 return;
             }
 
-            var transaccionCierre = new TransaccionCajaDto
-            {
-                NumeroRecibo = $"CIERRE-{DateTime.Now:yyyyMMdd-HHmm}",
-                FechaHora = DateTime.Now,
-                TipoTransaccion = "CIERRE DE CAJA (ARQUEO)",
-                Concepto = $"Reporte Consolidado del Turno - {cuadre.CantidadTransacciones} operaciones",
-                MontoTotal = cuadre.TotalGeneral,
-                MetodoPago = "CONSOLIDADO",
-                MontoRecibido = cuadre.TotalGeneral,
-                Devuelta = 0,
-                Cajero = SessionManager.CurrentSession?.Nombre ?? "Caja Principal",
-                Sucursal = SessionManager.CurrentSession?.SucursalNombre ?? "Sede Central",
-                ClienteOBeneficiario = "ADMINISTRACIÓN GENERAL",
-                DetalleLineas = $"• Ventas Productos POS: RD$ {cuadre.PorConcepto.VentasProductos:N2}\n" +
-                                $"• Cobro Masajes TACTO: RD$ {cuadre.PorConcepto.MasajesTacto:N2}\n" +
-                                $"• Abonos Préstamos: RD$ {cuadre.PorConcepto.AbonosPrestamos:N2}\n" +
-                                $"• Donaciones en Caja: RD$ {cuadre.PorConcepto.Donaciones:N2}\n" +
-                                $"--------------------------------------\n" +
-                                $"• Total Efectivo: RD$ {cuadre.PorMetodo.Efectivo:N2}\n" +
-                                $"• Total Tarjeta: RD$ {cuadre.PorMetodo.Tarjeta:N2}\n" +
-                                $"• Total Transferencia: RD$ {cuadre.PorMetodo.Transferencia:N2}"
-            };
-
-            var preview = new ReceiptPreviewWindow(transaccionCierre) { Owner = this };
-            preview.ShowDialog();
+            // El cierre de caja es un reporte de arqueo, no una venta: tiene su propia
+            // ventana con estilo de documento (tablas de resumen + firmas), distinta del
+            // comprobante angosto que se usa para recibos de venta (ver ReceiptPreviewWindow).
+            var reporte = new CierreCajaWindow(cuadre) { Owner = this };
+            reporte.ShowDialog();
         }
 
         // =========================================================

@@ -18,7 +18,7 @@ export function PageHeader({
   );
 }
 
-export function StatCard({ etiqueta, valor, tono }: { etiqueta: string; valor: string; tono?: "azul" | "verde" | "ambar" | "morado" }) {
+export function StatCard({ etiqueta, valor, tono }: { etiqueta: string; valor: string; tono?: "azul" | "verde" | "ambar" | "morado" | "cyan" }) {
   return (
     <div className={`stat-card stat-${tono ?? "azul"}`}>
       <span className="stat-etiqueta">{etiqueta}</span>

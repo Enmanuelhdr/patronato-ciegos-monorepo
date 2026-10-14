@@ -28,6 +28,43 @@ namespace Patronato.Core.Data
         public DbSet<TransaccionCaja> TransaccionesCaja { get; set; }
         public DbSet<OrdenPedidoCaja> OrdenesPedidoCaja { get; set; }
         public DbSet<SolicitudCita> SolicitudesCita { get; set; }
+
+        // RBAC del Core (usuarios internos) y gestión de accesos
+        public DbSet<CoreRole> CoreRoles { get; set; }
+        public DbSet<CorePermission> CorePermissions { get; set; }
+        public DbSet<CoreRolePermission> CoreRolePermissions { get; set; }
+
+        // Usuarios de la plataforma Web pública (clientes/beneficiarios externos),
+        // completamente separados de Usuario/CoreRole.
+        public DbSet<WebUser> WebUsers { get; set; }
+        public DbSet<WebUserLoginHistory> WebUserLoginHistorial { get; set; }
+        public DbSet<WebUserSession> WebUserSessions { get; set; }
+
+        // Bitácora de movimientos de Inventario
+        public DbSet<InventarioMovimiento> InventarioMovimientos { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<CoreRole>()
+                .HasIndex(r => r.Nombre)
+                .IsUnique();
+
+            modelBuilder.Entity<CorePermission>()
+                .HasIndex(p => p.Codigo)
+                .IsUnique();
+
+            modelBuilder.Entity<CoreRolePermission>()
+                .HasIndex(rp => new { rp.RoleId, rp.PermissionId })
+                .IsUnique();
+
+            modelBuilder.Entity<WebUser>()
+                .HasIndex(w => w.Correo)
+                .IsUnique();
+
+            modelBuilder.Entity<Usuario>()
+                .HasIndex(u => u.NombreUsuario)
+                .IsUnique();
+        }
     }
 
 }

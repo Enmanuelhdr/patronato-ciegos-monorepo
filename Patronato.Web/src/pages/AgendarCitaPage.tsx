@@ -3,21 +3,31 @@ import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { crearSolicitudCita } from "../api/endpoints";
 import { ApiError } from "../api/client";
-import { SedeTexto, TipoServicioCitaTexto } from "../api/types";
+import { EstadoCitaTexto, SedeTexto, TipoServicioCitaTexto, type SolicitudCita, type TipoServicioCita } from "../api/types";
 
 // Página pública: cualquier persona (todavía no registrada en el sistema) puede pedir que
 // la contacten para agendar. Recepción confirma o cancela desde /panel/citas.
+//
+// Solo se ofrecen los servicios que este formulario puede manejar sin más pasos:
+// - Masaje TACTO: no requiere ser Beneficiario, confirmar lo deja listo para cobro en Caja.
+// - Otro: contacto general, no promete agendar nada automáticamente.
+// Consulta Oftalmológica y Rehabilitación exigen ser Beneficiario registrado (cédula +
+// condición visual), algo que una persona anónima no puede establecer aquí — por eso
+// Recepción las agenda directo desde sus propias pantallas (/panel/consultas,
+// /panel/rehabilitacion), nunca a partir de esta solicitud pública.
+const SERVICIOS_DISPONIBLES: TipoServicioCita[] = [3, 4];
+
 export function AgendarCitaPage() {
   const [form, setForm] = useState({
     nombreSolicitante: "",
     telefono: "",
     correo: "",
-    tipoServicio: 1,
+    tipoServicio: 3,
     sedePreferida: 1,
     fechaPreferida: "",
     comentario: "",
   });
-  const [enviado, setEnviado] = useState(false);
+  const [solicitudCreada, setSolicitudCreada] = useState<SolicitudCita | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const solicitar = useMutation({
@@ -26,8 +36,8 @@ export function AgendarCitaPage() {
         ...form,
         fechaPreferida: form.fechaPreferida ? new Date(form.fechaPreferida).toISOString() : new Date().toISOString(),
       }),
-    onSuccess: () => {
-      setEnviado(true);
+    onSuccess: (data) => {
+      setSolicitudCreada(data);
       setError(null);
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : "No se pudo enviar la solicitud. Intenta de nuevo."),
@@ -49,21 +59,66 @@ export function AgendarCitaPage() {
           Déjanos tus datos y el servicio que necesitas. Recepción te contactará para confirmar fecha y hora exactas.
         </p>
 
-        {enviado ? (
+        {solicitudCreada ? (
           <div className="panel">
             <div className="alerta alerta-exito">
-              ¡Solicitud enviada! Te contactaremos pronto al teléfono {form.telefono} para confirmar tu cita.
+              ¡Solicitud enviada! Te contactaremos pronto al teléfono {solicitudCreada.telefono} para confirmar tu cita.
             </div>
-            <button
-              className="btn btn-primario"
-              style={{ marginTop: 14 }}
-              onClick={() => {
-                setEnviado(false);
-                setForm({ nombreSolicitante: "", telefono: "", correo: "", tipoServicio: 1, sedePreferida: 1, fechaPreferida: "", comentario: "" });
-              }}
-            >
-              Solicitar otra cita
-            </button>
+
+            <div id="comprobante-cita" className="comprobante-imprimible">
+              <h3 style={{ marginTop: 18, marginBottom: 4 }}>Comprobante de solicitud</h3>
+              <p style={{ fontSize: 22, fontWeight: 700, color: "#1e3a8a", margin: "4px 0 14px" }}>
+                SOL-{String(solicitudCreada.id).padStart(6, "0")}
+              </p>
+              <div className="form-grid">
+                <div className="campo">
+                  <label>Solicitante</label>
+                  <p style={{ margin: 0 }}>{solicitudCreada.nombreSolicitante}</p>
+                </div>
+                <div className="campo">
+                  <label>Teléfono</label>
+                  <p style={{ margin: 0 }}>{solicitudCreada.telefono}</p>
+                </div>
+                <div className="campo">
+                  <label>Servicio solicitado</label>
+                  <p style={{ margin: 0 }}>{TipoServicioCitaTexto[solicitudCreada.tipoServicio]}</p>
+                </div>
+                <div className="campo">
+                  <label>Sede de preferencia</label>
+                  <p style={{ margin: 0 }}>{SedeTexto[solicitudCreada.sedePreferida]}</p>
+                </div>
+                <div className="campo">
+                  <label>Fecha de preferencia</label>
+                  <p style={{ margin: 0 }}>{new Date(solicitudCreada.fechaPreferida).toLocaleDateString()}</p>
+                </div>
+                <div className="campo">
+                  <label>Solicitado el</label>
+                  <p style={{ margin: 0 }}>{new Date(solicitudCreada.fechaSolicitud).toLocaleString()}</p>
+                </div>
+                <div className="campo">
+                  <label>Estado</label>
+                  <p style={{ margin: 0 }}>{EstadoCitaTexto[solicitudCreada.estado]}</p>
+                </div>
+              </div>
+              <p style={{ marginTop: 14, fontSize: 14, color: "#475569" }}>
+                Conserva este código. Recepción te contactará para confirmar fecha y hora exactas.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button className="btn btn-primario" onClick={() => window.print()}>
+                Imprimir comprobante
+              </button>
+              <button
+                className="btn btn-secundario"
+                onClick={() => {
+                  setSolicitudCreada(null);
+                  setForm({ nombreSolicitante: "", telefono: "", correo: "", tipoServicio: 3, sedePreferida: 1, fechaPreferida: "", comentario: "" });
+                }}
+              >
+                Solicitar otra cita
+              </button>
+            </div>
           </div>
         ) : (
           <div className="panel">
@@ -97,8 +152,8 @@ export function AgendarCitaPage() {
                     value={form.tipoServicio}
                     onChange={(e) => setForm({ ...form, tipoServicio: Number(e.target.value) })}
                   >
-                    {Object.entries(TipoServicioCitaTexto).map(([v, t]) => (
-                      <option key={v} value={v}>{t}</option>
+                    {SERVICIOS_DISPONIBLES.map((v) => (
+                      <option key={v} value={v}>{TipoServicioCitaTexto[v]}</option>
                     ))}
                   </select>
                 </div>

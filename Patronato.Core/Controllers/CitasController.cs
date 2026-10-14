@@ -39,6 +39,12 @@ namespace Patronato.Core.Controllers
             if (string.IsNullOrWhiteSpace(solicitud.NombreSolicitante) || string.IsNullOrWhiteSpace(solicitud.Telefono))
                 return BadRequest("El nombre y el teléfono son obligatorios.");
 
+            // Consulta Oftalmológica y Rehabilitación exigen un Beneficiario registrado
+            // (cédula + condición visual) que una solicitud pública y anónima no puede
+            // establecer. Esas dos se agendan directo desde Recepción, no desde aquí.
+            if (solicitud.TipoServicio == TipoServicioCita.ConsultaOftalmologica || solicitud.TipoServicio == TipoServicioCita.Rehabilitacion)
+                return BadRequest("Este servicio requiere estar registrado como Beneficiario. Visita o llama a una sede para agendarlo con Recepción.");
+
             // Una solicitud pública siempre nace pendiente; el estado lo decide el personal.
             solicitud.Id = 0;
             solicitud.Estado = EstadoCita.Pendiente;
@@ -51,6 +57,9 @@ namespace Patronato.Core.Controllers
         }
 
         // 3. PUT: api/citas/5/confirmar (Recepción/especialista confirma fecha y hora con el solicitante)
+        // Si el servicio pedido es Masaje TACTO, además crea la SesionMasajeTacto (sin facturar)
+        // para que quede visible y cobrable en la Caja cuando el cliente llegue en persona —
+        // el mismo mecanismo que ya usa Recepción al agendar un masaje desde /panel/masajes.
         [HttpPut("{id}/confirmar")]
         public async Task<IActionResult> Confirmar(int id)
         {
@@ -59,8 +68,40 @@ namespace Patronato.Core.Controllers
                 return NotFound("Solicitud de cita no encontrada.");
 
             solicitud.Confirmar();
+
+            string mensaje = "Cita confirmada.";
+            if (solicitud.TipoServicio == TipoServicioCita.MasajeTacto)
+            {
+                var sesion = new SesionMasajeTacto
+                {
+                    NombreCliente = solicitud.NombreSolicitante,
+                    TelefonoCliente = solicitud.Telefono,
+                    NombreMasajista = "Terapeuta Invidente Asignado",
+                    Sede = solicitud.SedePreferida,
+                    FechaHora = solicitud.FechaPreferida,
+                    DuracionMinutos = 45,
+                    PrecioTarifa = 500m,
+                    EstaFacturadoEnCaja = false
+                };
+
+                _context.SesionesMasaje.Add(sesion);
+                mensaje = "Cita confirmada. Quedó pendiente de cobro en Caja (Masajes TACTO).";
+            }
+            else if (solicitud.TipoServicio == TipoServicioCita.ConsultaOftalmologica)
+            {
+                mensaje = "Cita confirmada. Verifica o registra al solicitante como Beneficiario y agenda la consulta desde Consultas Oftalmológicas.";
+            }
+            else if (solicitud.TipoServicio == TipoServicioCita.Rehabilitacion)
+            {
+                mensaje = "Cita confirmada. Verifica o registra al solicitante como Beneficiario y crea la inscripción desde Rehabilitación.";
+            }
+            else
+            {
+                mensaje = "Cita confirmada. Da seguimiento según el servicio solicitado (no tiene un módulo dedicado en el sistema).";
+            }
+
             await _context.SaveChangesAsync();
-            return Ok(new { mensaje = "Cita confirmada." });
+            return Ok(new { mensaje });
         }
 
         // 4. PUT: api/citas/5/cancelar (No se pudo contactar al solicitante o este desistió)

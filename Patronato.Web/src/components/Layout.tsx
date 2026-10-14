@@ -5,15 +5,16 @@ interface ItemNav {
   ruta: string;
   etiqueta: string;
   icono: string;
-  roles?: string[]; // sin roles = visible para cualquier rol autenticado
+  roles?: string[]; // guardia por nombre de rol (pantallas clínicas ya existentes)
+  permiso?: string | string[]; // guardia por permiso granular (RBAC nuevo)
 }
 
 const NAV: ItemNav[] = [
   { ruta: "/panel", etiqueta: "Panel General", icono: "📊" },
   { ruta: "/panel/citas", etiqueta: "Solicitudes de Cita", icono: "🗓️", roles: ["Administrador", "Recepcionista", "MedicoOftalmologo", "InstructorRehabilitacion"] },
   { ruta: "/panel/beneficiarios", etiqueta: "Beneficiarios", icono: "🧑‍🦯" },
-  // roles en el formato plano de RolUsuario.ToString() (sin tilde/espacio): es lo que
-  // realmente trae sesion.rol desde el login/JWT del Core (ver Patronato.Core/Enums/RolUsuario.cs).
+  // roles en el formato plano del nombre real de CoreRole (ver Patronato.Core/Entities/CoreRole.cs):
+  // es lo que trae sesion.rol desde el login/JWT del Core.
   { ruta: "/panel/consultas", etiqueta: "Consultas Oftalmológicas", icono: "👁️", roles: ["Administrador", "MedicoOftalmologo", "Recepcionista"] },
   { ruta: "/panel/rehabilitacion", etiqueta: "Rehabilitación", icono: "📚", roles: ["Administrador", "InstructorRehabilitacion", "Recepcionista"] },
   { ruta: "/panel/masajes", etiqueta: "Masajes TACTO", icono: "💆", roles: ["Administrador", "Recepcionista"] },
@@ -23,12 +24,18 @@ const NAV: ItemNav[] = [
   { ruta: "/panel/voluntarios", etiqueta: "Voluntarios", icono: "🤝", roles: ["Administrador", "Recepcionista"] },
   { ruta: "/panel/transacciones", etiqueta: "Transacciones de Caja", icono: "🧾", roles: ["Administrador"] },
   { ruta: "/panel/sucursales", etiqueta: "Sucursales", icono: "🏢", roles: ["Administrador"] },
-  { ruta: "/panel/usuarios", etiqueta: "Empleados y Usuarios", icono: "👥", roles: ["Administrador"] },
+  { ruta: "/panel/inventario", etiqueta: "Inventario", icono: "📦", permiso: "inventario.ver" },
+  { ruta: "/panel/accesos-web", etiqueta: "Accesos Web", icono: "🌐", permiso: "web-usuarios.ver" },
+  { ruta: "/panel/usuarios", etiqueta: "Usuarios del Core", icono: "👥", permiso: "core-users.ver" },
 ];
 
 export function Layout() {
-  const { sesion, logout } = useAuth();
-  const items = NAV.filter((item) => !item.roles || (sesion && item.roles.includes(sesion.rol)));
+  const { sesion, logout, tienePermiso } = useAuth();
+  const items = NAV.filter((item) => {
+    if (item.roles && item.roles.length > 0 && !(sesion && item.roles.includes(sesion.rol))) return false;
+    if (item.permiso && !tienePermiso(item.permiso)) return false;
+    return true;
+  });
 
   return (
     <div className="layout">

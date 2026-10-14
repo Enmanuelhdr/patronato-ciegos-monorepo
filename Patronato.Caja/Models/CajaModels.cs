@@ -149,6 +149,46 @@ namespace Patronato.Caja.Models
     }
 
     // ==========================================
+    // 3.1. CONSULTAS OFTALMOLÓGICAS
+    // ==========================================
+    // Las cubiertas por ARS/SENASA nunca aparecen aquí: el Core las excluye de
+    // consultas-pendientes porque no hay nada que cobrar en efectivo en la Caja.
+    public class ConsultaItem
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("beneficiarioId")]
+        public int BeneficiarioId { get; set; }
+
+        [JsonPropertyName("beneficiario")]
+        public BeneficiarioInfo? Beneficiario { get; set; }
+
+        [JsonPropertyName("sede")]
+        public int Sede { get; set; }
+
+        [JsonPropertyName("oftalmologo")]
+        public string Oftalmologo { get; set; } = string.Empty;
+
+        [JsonPropertyName("fecha")]
+        public DateTime Fecha { get; set; }
+
+        [JsonPropertyName("diagnosticoOcular")]
+        public string DiagnosticoOcular { get; set; } = string.Empty;
+
+        [JsonPropertyName("tarifaConsulta")]
+        public decimal TarifaConsulta { get; set; }
+
+        [JsonPropertyName("cubiertoPorARS")]
+        public bool CubiertoPorARS { get; set; }
+
+        [JsonPropertyName("estaFacturadaEnCaja")]
+        public bool EstaFacturadaEnCaja { get; set; }
+
+        public string NombrePaciente => Beneficiario?.NombreCompleto ?? $"Beneficiario #{BeneficiarioId}";
+    }
+
+    // ==========================================
     // 4. PRÉSTAMOS DE EMPRENDIMIENTO
     // ==========================================
     // Viene embebido en PrestamoItem.Beneficiario (el Core lo incluye en prestamos-activos).

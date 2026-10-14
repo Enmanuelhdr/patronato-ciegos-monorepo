@@ -1,9 +1,12 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Patronato.Core.Data;
+using Patronato.Core.Entities;
 using Patronato.Core.Monitoreo;
 using Patronato.Core.Servicios;
 
@@ -34,6 +37,8 @@ builder.Services.AddCors(options =>
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Patronato.Core";
 builder.Services.AddSingleton<JwtService>();
+builder.Services.AddSingleton<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
+builder.Services.AddSingleton<IPasswordHasher<WebUser>, PasswordHasher<WebUser>>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -53,6 +58,14 @@ builder.Services.AddAuthorization();
 // 3. Habilitar Controladores de API y Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// Los endpoints Minimal API del panel de soporte (Monitor/Operaciones, ver
+// Monitoreo/*.cs) reciben/devuelven enums como texto ("Suspendido", no 2) — no afecta
+// la serialización de los controladores de api/* (esos usan su propio JsonOptions de MVC).
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 // Swagger funciona aquí como panel de soporte/mantenimiento: acceso DIRECTO al Core,
 // a propósito, saltándose el Gateway. No es un hueco nuevo de seguridad — el botón
@@ -156,8 +169,8 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.MapMonitorEndpoints(gatewayApiKey);
-app.MapOperacionesEndpoints(gatewayApiKey);
+app.MapMonitorEndpoints();
+app.MapOperacionesEndpoints();
 
 app.UseAuthentication();
 app.UseAuthorization();

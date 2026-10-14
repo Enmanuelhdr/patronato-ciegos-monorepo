@@ -8,6 +8,8 @@ export interface SesionUsuario {
   rol: string;
   sucursalId: number;
   token: string;
+  permisos: string[];
+  debeCambiarPassword: boolean;
 }
 
 interface AuthContextValue {
@@ -16,6 +18,8 @@ interface AuthContextValue {
   error: string | null;
   login: (usuario: string, password: string) => Promise<boolean>;
   logout: () => void;
+  tienePermiso: (codigo: string | string[]) => boolean;
+  marcarPasswordCambiada: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -64,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         rol: data.rol,
         sucursalId: data.sucursalId,
         token: data.token,
+        permisos: data.permisos,
+        debeCambiarPassword: data.debeCambiarPassword,
       };
       setSesion(nuevaSesion);
       fijarTokenSesion(data.token);
@@ -77,8 +83,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function tienePermiso(codigo: string | string[]) {
+    if (!sesion) return false;
+    const codigos = Array.isArray(codigo) ? codigo : [codigo];
+    return codigos.some((c) => sesion.permisos.includes(c));
+  }
+
+  // Tras un cambio de contraseña exitoso (forzado o voluntario): ya no debe redirigir
+  // a la pantalla de cambio obligatorio en esta sesión.
+  function marcarPasswordCambiada() {
+    setSesion((prev) => {
+      if (!prev) return prev;
+      const actualizada = { ...prev, debeCambiarPassword: false };
+      sessionStorage.setItem(CLAVE_SESION, JSON.stringify(actualizada));
+      return actualizada;
+    });
+  }
+
   return (
-    <AuthContext.Provider value={{ sesion, cargando, error, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ sesion, cargando, error, login, logout, tienePermiso, marcarPasswordCambiada }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

@@ -9,11 +9,16 @@ import { api } from "./client";
 import type {
   Beneficiario,
   ConsultaOftalmologica,
+  CoreRole,
   CuadreCaja,
   Donacion,
+  EstadoCuenta,
+  EstadoWebUser,
   InscripcionRehabilitacion,
+  InventarioMovimiento,
   LoginResponse,
   OrdenPedidoCaja,
+  PaginaResultado,
   PrestamoEmprendimiento,
   ProductoArticulo,
   SesionMasajeTacto,
@@ -22,6 +27,8 @@ import type {
   TransaccionCaja,
   Usuario,
   Voluntario,
+  WebUser,
+  WebUserLoginHistorial,
 } from "./types";
 
 // ---------- Autenticación ----------
@@ -30,25 +37,38 @@ export const loginApi = (nombreUsuario: string, password: string) =>
     `/api/Usuarios/login?nombreUsuario=${encodeURIComponent(nombreUsuario)}&password=${encodeURIComponent(password)}`
   );
 
-// ---------- Usuarios / Empleados ----------
+export const cambiarPasswordPropia = (passwordActual: string, passwordNueva: string) =>
+  api.post<{ mensaje: string }>("/api/Usuarios/cambiar-password", { passwordActual, passwordNueva });
+
+// ---------- Roles del Core (solo lectura) ----------
+export const getCoreRoles = () => api.get<CoreRole[]>("/api/CoreRoles");
+
+// ---------- Usuarios / Empleados del Core ----------
 export const getUsuarios = () => api.get<Usuario[]>("/api/Usuarios");
 
 export interface CrearUsuarioPayload {
   nombreCompleto: string;
   nombreUsuario: string;
   correo: string;
-  passwordHash: string;
-  rol: number;
+  passwordTemporal: string;
+  roleId: number;
   sucursalId: number;
-  activo: boolean;
 }
 export const crearUsuario = (payload: CrearUsuarioPayload) => api.post<Usuario>("/api/Usuarios", payload);
 
-export const cambiarRolUsuario = (id: number, nuevoRol: number) =>
-  api.put<{ mensaje: string }>(`/api/Usuarios/${id}/cambiar-rol?nuevoRol=${nuevoRol}`);
+export const cambiarRolUsuario = (id: number, nuevoRolId: number) =>
+  api.put<{ mensaje: string }>(`/api/Usuarios/${id}/cambiar-rol?nuevoRolId=${nuevoRolId}`);
 
-export const editarUsuario = (id: number, payload: Usuario) => api.put<{ mensaje: string }>(`/api/Usuarios/${id}`, payload);
-export const desactivarUsuario = (id: number) => api.delete<{ mensaje: string }>(`/api/Usuarios/${id}`);
+export interface EditarUsuarioPayload {
+  nombreCompleto: string;
+  correo: string;
+  sucursalId: number;
+}
+export const editarUsuario = (id: number, payload: EditarUsuarioPayload) =>
+  api.put<{ mensaje: string }>(`/api/Usuarios/${id}`, payload);
+
+export const cambiarEstadoUsuario = (id: number, nuevoEstado: EstadoCuenta) =>
+  api.put<{ mensaje: string }>(`/api/Usuarios/${id}/estado?nuevoEstado=${nuevoEstado}`);
 
 // ---------- Beneficiarios ----------
 export const getBeneficiarios = () => api.get<Beneficiario[]>("/api/Beneficiarios");
@@ -156,8 +176,85 @@ export const desactivarVoluntario = (id: number) => api.delete<{ mensaje: string
 
 export const getDonaciones = () => api.get<Donacion[]>("/api/Voluntarios/donaciones");
 
-// ---------- Inventario (solo lectura, para armar órdenes de pedido) ----------
-export const getInventario = () => api.get<ProductoArticulo[]>("/api/inventario");
+// ---------- Inventario ----------
+// Usado por Órdenes de Pedido para armar su selector de productos (necesita la lista
+// completa, no paginada); el catálogo real no suele superar unos pocos cientos de ítems.
+export const getInventario = async () => {
+  const resultado = await api.get<PaginaResultado<ProductoArticulo>>("/api/inventario?tamanoPagina=500");
+  return resultado.items;
+};
+
+export interface FiltrosInventario {
+  categoria?: string;
+  activo?: boolean;
+  stockBajo?: boolean;
+  pagina?: number;
+  tamanoPagina?: number;
+}
+export const getInventarioPaginado = (filtros: FiltrosInventario = {}) => {
+  const params = new URLSearchParams();
+  if (filtros.categoria) params.set("categoria", filtros.categoria);
+  if (filtros.activo !== undefined) params.set("activo", String(filtros.activo));
+  if (filtros.stockBajo !== undefined) params.set("stockBajo", String(filtros.stockBajo));
+  params.set("pagina", String(filtros.pagina ?? 1));
+  params.set("tamanoPagina", String(filtros.tamanoPagina ?? 20));
+  return api.get<PaginaResultado<ProductoArticulo>>(`/api/inventario?${params}`);
+};
+
+export const getAlertasStock = () => api.get<ProductoArticulo[]>("/api/inventario/alertas");
+
+export interface CrearProductoPayload {
+  codigo: string;
+  nombre: string;
+  categoria: string;
+  precioVenta: number;
+  stockInicial: number;
+  stockMinimo: number;
+}
+export const crearProducto = (payload: CrearProductoPayload) => api.post<ProductoArticulo>("/api/inventario", payload);
+
+export interface EditarProductoPayload {
+  nombre: string;
+  categoria: string;
+  precioVenta: number;
+  stockMinimo: number;
+  activo: boolean;
+}
+export const editarProducto = (id: number, payload: EditarProductoPayload) =>
+  api.put<{ mensaje: string }>(`/api/inventario/${id}`, payload);
+
+export const registrarEntradaInventario = (id: number, cantidad: number, motivo?: string) =>
+  api.put<{ mensaje: string; nuevoStock: number }>(`/api/inventario/${id}/entrada`, { cantidad, motivo });
+
+export const registrarSalidaInventario = (id: number, cantidad: number, motivo?: string) =>
+  api.put<{ mensaje: string; nuevoStock: number }>(`/api/inventario/${id}/salida`, { cantidad, motivo });
+
+export const registrarAjusteInventario = (id: number, stockReal: number, motivo?: string) =>
+  api.put<{ mensaje: string; nuevoStock: number }>(`/api/inventario/${id}/ajuste`, { stockReal, motivo });
+
+export const getMovimientosProducto = (id: number) => api.get<InventarioMovimiento[]>(`/api/inventario/${id}/movimientos`);
+
+// ---------- Accesos Web (auditoría/gestión de cuentas de la plataforma web pública) ----------
+export interface FiltrosWebUsers {
+  estado?: EstadoWebUser;
+  busqueda?: string;
+}
+export const getWebUsers = (filtros: FiltrosWebUsers = {}) => {
+  const params = new URLSearchParams();
+  if (filtros.estado) params.set("estado", filtros.estado);
+  if (filtros.busqueda) params.set("busqueda", filtros.busqueda);
+  const query = params.toString();
+  return api.get<WebUser[]>(`/api/WebUsers${query ? `?${query}` : ""}`);
+};
+
+export const habilitarWebUser = (id: number) => api.put<{ mensaje: string }>(`/api/WebUsers/${id}/habilitar`);
+export const deshabilitarWebUser = (id: number) => api.put<{ mensaje: string }>(`/api/WebUsers/${id}/deshabilitar`);
+export const resetearPasswordWebUser = (id: number) =>
+  api.post<{ mensaje: string; passwordTemporal: string }>(`/api/WebUsers/${id}/resetear-password`);
+export const forzarCierreSesionWebUser = (id: number) =>
+  api.post<{ mensaje: string }>(`/api/WebUsers/${id}/forzar-cierre-sesion`);
+export const getHistorialWebUser = (id: number) =>
+  api.get<WebUserLoginHistorial[]>(`/api/WebUsers/${id}/historial-accesos`);
 
 // ---------- Masajes TACTO (agendar; el cobro es exclusivo de Caja) ----------
 export const getMasajesPendientes = () => api.get<SesionMasajeTacto[]>("/api/caja/masajes-pendientes");
@@ -171,7 +268,7 @@ export interface CrearMasajePayload {
   precioTarifa: number;
 }
 export const crearMasaje = (payload: CrearMasajePayload) =>
-  api.post<{ mensaje: string; sesion: SesionMasajeTacto }>("/api/caja/crear-masaje", payload);
+  api.post<{ mensaje: string; sesion: SesionMasajeTacto }>("/api/recepcion/masajes", payload);
 
 // ---------- Préstamos de Emprendimiento (otorgar; el abono es exclusivo de Caja) ----------
 export const getPrestamosActivos = (filtro?: string) =>
@@ -185,7 +282,7 @@ export interface CrearPrestamoPayload {
   involucraFamilia: boolean;
 }
 export const crearPrestamo = (payload: CrearPrestamoPayload) =>
-  api.post<{ mensaje: string; prestamoId: number }>("/api/caja/crear-prestamo", payload);
+  api.post<{ mensaje: string; prestamoId: number }>("/api/recepcion/prestamos", payload);
 
 // ---------- Órdenes de Pedido (Recepción genera; Caja cobra) ----------
 export const getOrdenesPendientes = () => api.get<OrdenPedidoCaja[]>("/api/caja/ordenes-pendientes");
@@ -205,7 +302,7 @@ export interface CrearOrdenPayload {
   items: CrearOrdenItemPayload[];
 }
 export const crearOrden = (payload: CrearOrdenPayload) =>
-  api.post<{ mensaje: string; orden: OrdenPedidoCaja }>("/api/caja/crear-orden", payload);
+  api.post<{ mensaje: string; orden: OrdenPedidoCaja }>("/api/recepcion/ordenes", payload);
 
 // ---------- Reportes de Caja (solo lectura, visibilidad administrativa) ----------
 export const getCuadreCaja = (fecha?: string, cajero?: string) => {

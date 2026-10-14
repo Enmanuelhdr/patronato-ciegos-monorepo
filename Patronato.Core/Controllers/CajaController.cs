@@ -35,6 +35,19 @@ namespace Patronato.Core.Controllers
             return Ok(pendientes);
         }
 
+        // GET: api/caja/consultas-pendientes (las cubiertas por ARS no requieren cobro en efectivo)
+        [HttpGet("consultas-pendientes")]
+        public async Task<IActionResult> GetConsultasPendientes()
+        {
+            var pendientes = await _context.ConsultasOftalmologicas
+                .Include(c => c.Beneficiario)
+                .Where(c => !c.EstaFacturadaEnCaja && !c.CubiertoPorARS)
+                .OrderBy(c => c.Fecha)
+                .ToListAsync();
+
+            return Ok(pendientes);
+        }
+
         // GET: api/caja/prestamos-activos
         [HttpGet("prestamos-activos")]
         public async Task<IActionResult> GetPrestamosActivos([FromQuery] string? filtro = null)
@@ -99,6 +112,7 @@ namespace Patronato.Core.Controllers
             var totalMasajes = transacciones.Where(t => t.TipoTransaccion == "MasajeTacto").Sum(t => t.MontoTotal);
             var totalPrestamos = transacciones.Where(t => t.TipoTransaccion == "AbonoPrestamo").Sum(t => t.MontoTotal);
             var totalDonaciones = transacciones.Where(t => t.TipoTransaccion == "Donacion").Sum(t => t.MontoTotal);
+            var totalConsultas = transacciones.Where(t => t.TipoTransaccion == "ConsultaOftalmologica").Sum(t => t.MontoTotal);
 
             return Ok(new
             {
@@ -117,7 +131,8 @@ namespace Patronato.Core.Controllers
                     ventasProductos = totalVentas,
                     masajesTacto = totalMasajes,
                     abonosPrestamos = totalPrestamos,
-                    donaciones = totalDonaciones
+                    donaciones = totalDonaciones,
+                    consultas = totalConsultas
                 },
                 movimientos = transacciones
             });
@@ -174,6 +189,67 @@ namespace Patronato.Core.Controllers
             {
                 mensaje = "Masaje cobrado con éxito en Caja.",
                 monto = sesion.PrecioTarifa,
+                recibo = transaccion
+            });
+        }
+
+        // 1.1. POST: api/caja/cobrar-consulta/1 (Cobra una consulta oftalmológica no cubierta por ARS)
+        [HttpPost("cobrar-consulta/{id}")]
+        public async Task<IActionResult> CobrarConsulta(
+            int id,
+            [FromQuery] string metodoPago = "Efectivo",
+            [FromQuery] decimal? montoRecibido = null,
+            [FromQuery] string cajero = "Caja Principal",
+            [FromQuery] string sucursal = "Sede Central")
+        {
+            var consulta = await _context.ConsultasOftalmologicas
+                .Include(c => c.Beneficiario)
+                .FirstOrDefaultAsync(c => c.Id == id);
+
+            if (consulta == null)
+                return NotFound("Consulta oftalmológica no encontrada.");
+
+            if (consulta.EstaFacturadaEnCaja)
+                return BadRequest("Esta consulta ya fue cobrada previamente.");
+
+            if (consulta.CubiertoPorARS)
+                return BadRequest("Esta consulta está cubierta por ARS: no se cobra en Caja.");
+
+            consulta.MarcarComoCobrada();
+
+            bool esEfectivo = string.Equals(metodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase);
+            decimal recibido = esEfectivo && montoRecibido.HasValue && montoRecibido.Value > 0 ? montoRecibido.Value : consulta.TarifaConsulta;
+            decimal devuelta = esEfectivo ? Math.Max(0, recibido - consulta.TarifaConsulta) : 0;
+
+            string nombreBeneficiario = consulta.Beneficiario != null
+                ? $"{consulta.Beneficiario.Nombres} {consulta.Beneficiario.Apellidos}".Trim()
+                : "Beneficiario No. " + consulta.BeneficiarioId;
+
+            var transaccion = new TransaccionCaja
+            {
+                NumeroRecibo = GenerarNumeroRecibo("CON"),
+                FechaHora = DateTime.Now,
+                TipoTransaccion = "ConsultaOftalmologica",
+                Concepto = $"Consulta Oftalmológica - Dr(a). {consulta.Oftalmologo} - {nombreBeneficiario}",
+                MontoTotal = consulta.TarifaConsulta,
+                MetodoPago = metodoPago,
+                MontoRecibido = recibido,
+                Devuelta = devuelta,
+                Cajero = cajero,
+                Sucursal = sucursal,
+                ClienteOBeneficiario = nombreBeneficiario,
+                IdentificacionCliente = consulta.Beneficiario?.Cedula ?? string.Empty,
+                DetalleLineas = $"1x Consulta Oftalmológica - Dr(a). {consulta.Oftalmologo} - RD$ {consulta.TarifaConsulta:N2}",
+                ReferenciaId = consulta.Id
+            };
+
+            _context.TransaccionesCaja.Add(transaccion);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = "Consulta cobrada con éxito en Caja.",
+                monto = consulta.TarifaConsulta,
                 recibo = transaccion
             });
         }
@@ -416,20 +492,11 @@ namespace Patronato.Core.Controllers
         }
 
         // ==========================================
-        // 3. REGISTRO DE NUEVAS CITAS Y PRÉSTAMOS
+        // 3. CONSULTAS DE APOYO PARA LA PANTALLA DE CAJA
         // ==========================================
-
-        // GET: api/caja/beneficiarios (Lista de beneficiarios invidentes)
-        [HttpGet("beneficiarios")]
-        public async Task<IActionResult> GetBeneficiarios()
-        {
-            var beneficiarios = await _context.Beneficiarios
-                .Where(b => b.Activo)
-                .OrderBy(b => b.Nombres)
-                .ToListAsync();
-
-            return Ok(beneficiarios);
-        }
+        // (Agendar masajes/consultas/préstamos, registrar beneficiarios, etc. son tareas de
+        // Recepción — ver Patronato.Core/Controllers/RecepcionController.cs y BeneficiariosController.cs.
+        // Aquí solo queda lo que la propia Caja necesita leer para cobrar.)
 
         // GET: api/caja/clientes-frecuentes (Autocompletado POS y Donaciones)
         [HttpGet("clientes-frecuentes")]
@@ -460,68 +527,6 @@ namespace Patronato.Core.Controllers
             return Ok(todos);
         }
 
-        // POST: api/caja/crear-masaje (Agendar nueva cita de masaje TACTO)
-        // Exclusivo de la Web (Recepción/Admin agenda; Caja solo cobra) — requiere JWT.
-        [HttpPost("crear-masaje")]
-        [Authorize(Roles = "Administrador,Recepcionista")]
-        public async Task<IActionResult> CrearMasaje([FromBody] CrearMasajeRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.NombreCliente))
-                return BadRequest("El nombre del cliente es obligatorio.");
-
-            var sesion = new SesionMasajeTacto
-            {
-                NombreCliente = request.NombreCliente.Trim(),
-                TelefonoCliente = request.TelefonoCliente?.Trim() ?? string.Empty,
-                NombreMasajista = string.IsNullOrWhiteSpace(request.NombreMasajista) ? "Terapeuta Invidente Asignado" : request.NombreMasajista.Trim(),
-                Sede = request.Sede,
-                FechaHora = DateTime.Now,
-                DuracionMinutos = request.DuracionMinutos > 0 ? request.DuracionMinutos : 45,
-                PrecioTarifa = request.PrecioTarifa > 0 ? request.PrecioTarifa : 500m,
-                EstaFacturadoEnCaja = false
-            };
-
-            _context.SesionesMasaje.Add(sesion);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { mensaje = "Cita de masaje TACTO agendada exitosamente.", sesion });
-        }
-
-        // POST: api/caja/crear-prestamo (Otorgar nuevo crédito a beneficiario)
-        // Exclusivo de la Web (otorgar es decisión de Recepción/Admin; Caja solo abona) — requiere JWT.
-        [HttpPost("crear-prestamo")]
-        [Authorize(Roles = "Administrador,Recepcionista")]
-        public async Task<IActionResult> CrearPrestamo([FromBody] CrearPrestamoRequest request)
-        {
-            var beneficiario = await _context.Beneficiarios.FindAsync(request.BeneficiarioId);
-            if (beneficiario == null)
-                return NotFound("Beneficiario no encontrado en el sistema.");
-
-            if (request.MontoAprobado <= 0)
-                return BadRequest("El monto del préstamo debe ser mayor a cero.");
-
-            var prestamo = new PrestamoEmprendimiento
-            {
-                BeneficiarioId = request.BeneficiarioId,
-                MontoAprobado = request.MontoAprobado,
-                SaldoPendiente = request.MontoAprobado,
-                PlazoMeses = request.PlazoMeses > 0 ? request.PlazoMeses : 12,
-                Rubro = request.Rubro,
-                EstudioFactibilidadAprobado = true,
-                InvolucraFamilia = request.InvolucraFamilia,
-                Estado = EstadoPrestamo.Activo
-            };
-
-            _context.PrestamosEmprendimiento.Add(prestamo);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { mensaje = "Préstamo de emprendimiento otorgado exitosamente.", prestamoId = prestamo.Id });
-        }
-
-        // ==========================================
-        // 4. ÓRDENES DE PEDIDO Y COTIZACIONES (RECEPCIÓN Y CAJA)
-        // ==========================================
-
         // GET: api/caja/ordenes-pendientes
         [HttpGet("ordenes-pendientes")]
         public async Task<IActionResult> GetOrdenesPendientes()
@@ -532,51 +537,6 @@ namespace Patronato.Core.Controllers
                 .ToListAsync();
 
             return Ok(ordenes);
-        }
-
-        // POST: api/caja/crear-orden (Recepción genera orden de insumos o cotización)
-        // Exclusivo de la Web (Caja solo la cobra vía VENTA_CARRITO) — requiere JWT.
-        [HttpPost("crear-orden")]
-        [Authorize(Roles = "Administrador,Recepcionista")]
-        public async Task<IActionResult> CrearOrden([FromBody] CrearOrdenRequest request)
-        {
-            if (request == null || request.Items == null || !request.Items.Any())
-                return BadRequest("La orden de pedido no contiene artículos.");
-
-            decimal total = 0;
-            foreach (var item in request.Items)
-            {
-                var prod = await _context.ProductosArticulos.FindAsync(item.ProductoId);
-                if (prod == null)
-                    return NotFound($"Producto #{item.ProductoId} no existe en el catálogo.");
-
-                if (prod.StockDisponible < item.Cantidad)
-                    return BadRequest($"Stock insuficiente para '{prod.Nombre}'. Disponibles: {prod.StockDisponible}.");
-
-                total += prod.PrecioVenta * item.Cantidad;
-            }
-
-            var orden = new OrdenPedidoCaja
-            {
-                NumeroOrden = $"ORD-{DateTime.Now:yyyyMMddHHmmss}-{Random.Shared.Next(100, 999)}",
-                FechaHora = DateTime.Now,
-                ClienteNombre = string.IsNullOrWhiteSpace(request.ClienteNombre) ? "Consumidor Final" : request.ClienteNombre.Trim(),
-                ClienteDocumento = request.ClienteDocumento?.Trim(),
-                CreadoPor = string.IsNullOrWhiteSpace(request.CreadoPor) ? "Recepción" : request.CreadoPor.Trim(),
-                Estado = "Pendiente",
-                Total = total,
-                ItemsJson = JsonSerializer.Serialize(request.Items),
-                Notas = request.Notas
-            };
-
-            _context.OrdenesPedidoCaja.Add(orden);
-            await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                mensaje = $"Orden {orden.NumeroOrden} creada exitosamente.",
-                orden
-            });
         }
 
         private static string GenerarNumeroRecibo(string prefijo)

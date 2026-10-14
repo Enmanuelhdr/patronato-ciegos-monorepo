@@ -29,6 +29,7 @@ namespace Patronato.Caja.Services
         // Último dato bueno de cada consulta, para seguir mostrando algo útil sin conexión.
         private static List<ProductoItem>? _cacheProductos;
         private static List<SesionMasajeItem>? _cacheMasajes;
+        private static List<ConsultaItem>? _cacheConsultas;
         private static List<PrestamoItem>? _cachePrestamos;
         private static List<ClienteFrecuenteDto>? _cacheClientesFrecuentes;
         private static List<OrdenPedidoCajaDto>? _cacheOrdenes;
@@ -414,6 +415,90 @@ namespace Patronato.Caja.Services
             catch (Exception ex)
             {
                 Logger.Error($"Error inesperado al cobrar masaje (sesión #{sesion.Id}).", ex);
+                return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
+            }
+        }
+
+        // ==========================================
+        // 2.1. CONSULTAS OFTALMOLÓGICAS
+        // ==========================================
+        public async Task<List<ConsultaItem>> GetConsultasPendientesAsync()
+        {
+            try
+            {
+                var respuesta = await _gateway.EnviarAsync("CONSULTAS_PENDIENTES_CONSULTAR", new { });
+                _cacheConsultas = DeserializarLista<ConsultaItem>(respuesta);
+                SinConexionGateway = false;
+                return _cacheConsultas;
+            }
+            catch (GatewayNoDisponibleException)
+            {
+                SinConexionGateway = true;
+                return _cacheConsultas ?? new List<ConsultaItem>();
+            }
+            catch
+            {
+                return _cacheConsultas ?? new List<ConsultaItem>();
+            }
+        }
+
+        public async Task<(bool Success, string Message, TransaccionCajaDto? Recibo)> CobrarConsultaAsync(
+            ConsultaItem consulta, string metodoPago, decimal montoRecibido)
+        {
+            var cajero = SessionManager.CurrentSession?.Nombre ?? "Caja Principal";
+            var sucursal = SessionManager.CurrentSession?.SucursalNombre ?? "Sede Central";
+
+            var datos = new
+            {
+                id = consulta.Id,
+                metodoPago,
+                montoRecibido,
+                cajero,
+                sucursal
+            };
+
+            try
+            {
+                // Código CONSULTA_COBRAR: cobro de dinero real, debe ir por el Gateway.
+                var respuesta = await _gateway.EnviarAsync("CONSULTA_COBRAR", datos);
+                SinConexionGateway = false;
+                Logger.Info($"Consulta oftalmológica cobrada: consulta #{consulta.Id} paciente='{consulta.NombrePaciente}' monto={consulta.TarifaConsulta:F2} metodoPago={metodoPago} -> {respuesta.CodigoRespuesta}.");
+                return TraducirRespuestaGateway(respuesta);
+            }
+            catch (GatewayNoDisponibleException ex)
+            {
+                SinConexionGateway = true;
+
+                bool esEfectivo = string.Equals(metodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase);
+                decimal recibido = esEfectivo && montoRecibido > 0 ? montoRecibido : consulta.TarifaConsulta;
+                decimal devuelta = esEfectivo ? Math.Max(0, recibido - consulta.TarifaConsulta) : 0;
+
+                var recibo = new TransaccionCajaDto
+                {
+                    NumeroRecibo = OfflineQueueService.GenerarNumeroProvisional("CON"),
+                    FechaHora = DateTime.Now,
+                    TipoTransaccion = "ConsultaOftalmologica",
+                    Concepto = $"Consulta Oftalmológica - Dr(a). {consulta.Oftalmologo} - PENDIENTE DE SINCRONIZAR",
+                    MontoTotal = consulta.TarifaConsulta,
+                    MetodoPago = metodoPago,
+                    MontoRecibido = recibido,
+                    Devuelta = devuelta,
+                    Cajero = cajero,
+                    Sucursal = sucursal,
+                    ClienteOBeneficiario = consulta.NombrePaciente,
+                    IdentificacionCliente = consulta.Beneficiario?.Cedula ?? string.Empty,
+                    DetalleLineas = $"1x Consulta Oftalmológica - Dr(a). {consulta.Oftalmologo} - RD$ {consulta.TarifaConsulta:N2}",
+                    ReferenciaId = consulta.Id
+                };
+
+                OfflineQueueService.Encolar("CONSULTA_COBRAR", datos, recibo.NumeroRecibo);
+                Logger.Warn($"Gateway no disponible: cobro de consulta (#{consulta.Id}) encolado localmente como '{recibo.NumeroRecibo}'.", ex);
+
+                return (true, "Sin conexión con el Gateway: consulta cobrada localmente. Se sincronizará automáticamente.", recibo);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error inesperado al cobrar consulta (#{consulta.Id}).", ex);
                 return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
             }
         }

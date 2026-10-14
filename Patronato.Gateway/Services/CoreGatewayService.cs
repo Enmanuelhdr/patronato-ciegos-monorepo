@@ -36,6 +36,7 @@ public class CoreGatewayService
 
                 // Transaccionales: mueven dinero real, siempre contra el Core.
                 "MASAJE_COBRAR" => await CobrarMasajeAsync(request, origen),
+                "CONSULTA_COBRAR" => await CobrarConsultaAsync(request, origen),
                 "PRESTAMO_ABONAR" => await AbonarPrestamoAsync(request, origen),
                 "PRODUCTO_VENDER" => await VenderProductoAsync(request, origen),
                 "VENTA_CARRITO" => await VenderCarritoAsync(request, origen),
@@ -46,6 +47,7 @@ public class CoreGatewayService
                 "SUCURSALES_CONSULTAR" => await ConsultarAsync(request, origen, "api/Sucursales"),
                 "INVENTARIO_CONSULTAR" => await ConsultarAsync(request, origen, "api/inventario"),
                 "MASAJES_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/masajes-pendientes"),
+                "CONSULTAS_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/consultas-pendientes"),
                 "CLIENTES_FRECUENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/clientes-frecuentes"),
                 "ORDENES_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/ordenes-pendientes"),
                 "PRESTAMOS_ACTIVOS_CONSULTAR" => await PrestamosActivosAsync(request, origen),
@@ -71,6 +73,15 @@ public class CoreGatewayService
         var id = datos.GetProperty("id").GetInt32();
         var query = ConstruirQueryCobro(datos);
         var ruta = $"api/caja/cobrar-masaje/{id}?{query}";
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, ruta, null, null);
+    }
+
+    private async Task<TransaccionResponse> CobrarConsultaAsync(TransaccionRequest request, string origen)
+    {
+        var datos = request.Datos;
+        var id = datos.GetProperty("id").GetInt32();
+        var query = ConstruirQueryCobro(datos);
+        var ruta = $"api/caja/cobrar-consulta/{id}?{query}";
         return await EnviarCobroAsync(request, origen, HttpMethod.Post, ruta, null, null);
     }
 

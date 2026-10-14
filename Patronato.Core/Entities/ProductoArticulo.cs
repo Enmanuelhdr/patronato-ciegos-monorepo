@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -15,6 +15,11 @@ namespace Patronato.Core.Entities
         // Control de precios y existencia
         public decimal PrecioVenta { get; set; }
         public int StockDisponible { get; set; }
+        // Umbral para la alerta visual de stock crítico/bajo en el panel de Inventario
+        public int StockMinimo { get; set; } = 5;
+        // Permite descontinuar un producto del catálogo sin borrar su historial
+        public bool Activo { get; set; } = true;
+
         // Regla de Negocio: La Caja descuenta stock al registrar una venta
         public void DescontarStock(int cantidad)
         {

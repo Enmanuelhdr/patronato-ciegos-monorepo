@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -21,15 +22,27 @@ namespace Patronato.Core.Servicios
             _expiracionMinutos = int.TryParse(config["Jwt:ExpiracionMinutos"], out var minutos) ? minutos : 480;
         }
 
-        public string GenerarToken(Usuario usuario)
+        // rolNombre y permisos se resuelven aparte (desde CoreRole/CoreRolePermission)
+        // porque este servicio no depende del DbContext.
+        public string GenerarToken(Usuario usuario, string rolNombre, IEnumerable<string> permisos)
         {
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
                 new Claim(ClaimTypes.Name, usuario.NombreCompleto),
-                new Claim(ClaimTypes.Role, usuario.Rol.ToString()),
+                new Claim(ClaimTypes.Role, rolNombre),
                 new Claim("sucursalId", usuario.SucursalId.ToString()),
+                // Marca el token como emitido para el dominio del Core: ningún token de
+                // WebUser (dominio "web", cuando exista su login) debe poder pasar esta
+                // validación aunque llegue firmado con la misma clave.
+                new Claim("ctx", "core"),
+                new Claim("debeCambiarPassword", usuario.DebeCambiarPassword.ToString()),
             };
+
+            foreach (var permiso in permisos)
+            {
+                claims.Add(new Claim("permiso", permiso));
+            }
 
             var credenciales = new SigningCredentials(
                 new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_claveSecreta)),

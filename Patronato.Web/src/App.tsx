@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
+import { CambiarPasswordPage } from "./pages/CambiarPasswordPage";
 import { AgendarCitaPage } from "./pages/AgendarCitaPage";
 import { CitasPage } from "./pages/CitasPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -17,6 +18,8 @@ import { VoluntariosPage } from "./pages/VoluntariosPage";
 import { TransaccionesPage } from "./pages/TransaccionesPage";
 import { SucursalesPage } from "./pages/SucursalesPage";
 import { UsuariosPage } from "./pages/UsuariosPage";
+import { InventarioPage } from "./pages/InventarioPage";
+import { AccesosWebPage } from "./pages/AccesosWebPage";
 
 const SOLO_ADMIN = ["Administrador"];
 const RECEPCION_O_ADMIN = ["Administrador", "Recepcionista"];
@@ -29,6 +32,9 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/agendar-cita" element={<AgendarCitaPage />} />
+      {/* Fuera del <Layout>/ProtectedRoute a propósito: si estuviera adentro, un usuario
+          con debeCambiarPassword=true entraría en un redirect loop contra sí misma. */}
+      <Route path="/cambiar-password" element={<CambiarPasswordPage />} />
 
       {/* Portal interno del personal (Recepción / Administración) */}
       <Route
@@ -51,7 +57,9 @@ export default function App() {
         <Route path="voluntarios" element={<ProtectedRoute roles={RECEPCION_O_ADMIN}><VoluntariosPage /></ProtectedRoute>} />
         <Route path="transacciones" element={<ProtectedRoute roles={SOLO_ADMIN}><TransaccionesPage /></ProtectedRoute>} />
         <Route path="sucursales" element={<ProtectedRoute roles={SOLO_ADMIN}><SucursalesPage /></ProtectedRoute>} />
-        <Route path="usuarios" element={<ProtectedRoute roles={SOLO_ADMIN}><UsuariosPage /></ProtectedRoute>} />
+        <Route path="inventario" element={<ProtectedRoute permiso="inventario.ver"><InventarioPage /></ProtectedRoute>} />
+        <Route path="accesos-web" element={<ProtectedRoute permiso="web-usuarios.ver"><AccesosWebPage /></ProtectedRoute>} />
+        <Route path="usuarios" element={<ProtectedRoute permiso="core-users.ver"><UsuariosPage /></ProtectedRoute>} />
       </Route>
     </Routes>
   );

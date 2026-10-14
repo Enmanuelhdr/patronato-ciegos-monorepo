@@ -2,14 +2,17 @@
 // Los nombres de campo son camelCase porque ASP.NET Core serializa así por defecto
 // (AddControllers() usa JsonNamingPolicy.CamelCase) — confirmado contra el Core en vivo.
 
-export type RolUsuario = 1 | 2 | 3 | 4 | 5;
-export const RolUsuarioTexto: Record<RolUsuario, string> = {
-  1: "Administrador",
-  2: "Cajero",
-  3: "Médico Oftalmólogo",
-  4: "Instructor Rehabilitación",
-  5: "Recepcionista",
-};
+// El rol ya no es un enum fijo: viene del Core (tabla CoreRole) vía /api/CoreRoles,
+// así que admite tantos roles como el Core tenga sembrados (ver CoreRolesController).
+export interface CoreRole {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  esSistema: boolean;
+}
+
+export type EstadoCuenta = "Activo" | "Suspendido" | "Revocado";
+export type EstadoWebUser = "Activo" | "Suspendido";
 
 export type SedeEnum = 1 | 2 | 3;
 export const SedeTexto: Record<SedeEnum, string> = {
@@ -94,9 +97,12 @@ export interface Usuario {
   nombreCompleto: string;
   nombreUsuario: string;
   correo: string;
-  rol: RolUsuario;
+  roleId: number;
+  roleNombre: string;
   sucursalId: number;
-  activo: boolean;
+  estadoCuenta: EstadoCuenta;
+  debeCambiarPassword: boolean;
+  ultimoLogin: string | null;
   fechaCreacion: string;
 }
 
@@ -107,6 +113,8 @@ export interface LoginResponse {
   rol: string;
   sucursalId: number;
   token: string;
+  permisos: string[];
+  debeCambiarPassword: boolean;
 }
 
 export interface ConsultaOftalmologica {
@@ -163,6 +171,46 @@ export interface ProductoArticulo {
   categoria: string;
   precioVenta: number;
   stockDisponible: number;
+  stockMinimo: number;
+  activo: boolean;
+  stockBajo: boolean;
+}
+
+export interface PaginaResultado<T> {
+  total: number;
+  pagina: number;
+  tamanoPagina: number;
+  items: T[];
+}
+
+export interface InventarioMovimiento {
+  id: number;
+  productoId: number;
+  tipo: "Entrada" | "Salida" | "Ajuste";
+  cantidad: number;
+  stockResultante: number;
+  motivo?: string | null;
+  coreUserNombre: string;
+  fecha: string;
+}
+
+export interface WebUser {
+  id: number;
+  nombreCompleto: string;
+  correo: string;
+  telefono?: string | null;
+  estado: EstadoWebUser;
+  fechaRegistro: string;
+  ultimoLogin?: string | null;
+  debeCambiarPassword: boolean;
+}
+
+export interface WebUserLoginHistorial {
+  id: number;
+  fechaHora: string;
+  exitoso: boolean;
+  ip?: string | null;
+  userAgent?: string | null;
 }
 
 export interface SesionMasajeTacto {
@@ -246,6 +294,7 @@ export interface CuadreCaja {
     masajesTacto: number;
     abonosPrestamos: number;
     donaciones: number;
+    consultas: number;
   };
   movimientos: TransaccionCaja[];
 }

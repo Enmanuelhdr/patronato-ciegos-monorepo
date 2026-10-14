@@ -358,6 +358,98 @@
             </TabItem>
 
             <!-- ========================================== -->
+            <!-- 2.1. CONSULTAS OFTALMOLÓGICAS              -->
+            <!-- ========================================== -->
+            <TabItem Header="👁️ Consultas Oftalmológicas">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Banner Informativo -->
+                    <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="Consultas Oftalmológicas de Prevención" FontWeight="Bold" FontSize="13" Foreground="#1E3A8A" />
+                                <TextBlock Text="Cobra las consultas realizadas que no están cubiertas por ARS/SENASA. Las cubiertas por seguro no aparecen aquí: no requieren cobro en efectivo." FontSize="11" Foreground="#3B82F6" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Button Content="Actualizar Pendientes"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#F1F5F9" Foreground="#334155"
+                                        BorderBrush="#CBD5E1" BorderThickness="1"
+                                        Height="32" FontSize="11"
+                                        Click="BtnActualizarConsultas_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Tabla de Consultas Pendientes -->
+                    <DataGrid x:Name="GridConsultas" Grid.Row="1" SelectionChanged="GridConsultas_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="No. Consulta" Binding="{Binding Id}" Width="90" />
+                            <DataGridTextColumn Header="Paciente" Binding="{Binding NombrePaciente}" Width="*" />
+                            <DataGridTextColumn Header="Oftalmólogo" Binding="{Binding Oftalmologo}" Width="*" />
+                            <DataGridTextColumn Header="Fecha" Binding="{Binding Fecha, StringFormat=dd/MM/yyyy}" Width="110" />
+                            <DataGridTextColumn Header="Tarifa (RD$)" Binding="{Binding TarifaConsulta, StringFormat=N2}" Width="110" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Panel de Cobro de la Consulta Seleccionada -->
+                    <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="1.5*" />
+                                <ColumnDefinition Width="1*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Datos de la Consulta Seleccionada -->
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Consulta Seleccionada:" FontSize="11" Foreground="#64748B" />
+                                <TextBlock x:Name="TxtDetalleConsultaSeleccionada" Text="Selecciona una consulta de la lista superior para cobrar" FontWeight="Bold" FontSize="13" Foreground="#0F172A" Margin="0,2,0,4" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Tarifa Oficial: " FontSize="12" Foreground="#475569" />
+                                    <TextBlock x:Name="TxtTarifaConsulta" Text="RD$ 0.00" FontWeight="Bold" FontSize="14" Foreground="#1E3A8A" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Parámetros de Pago -->
+                            <Grid Grid.Column="1" Margin="16,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="Método de Pago:" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                    <ComboBox x:Name="CmbMetodoPagoConsulta" Height="30" SelectedIndex="0" SelectionChanged="CmbMetodoPagoConsulta_SelectionChanged">
+                                        <ComboBoxItem Content="Efectivo" />
+                                        <ComboBoxItem Content="Tarjeta" />
+                                        <ComboBoxItem Content="Transferencia" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel x:Name="PanelMontoRecibidoConsulta" Grid.Column="1" Margin="4,0,0,0">
+                                    <TextBlock Text="Monto Recibido:" FontSize="11" Foreground="#475569" Margin="0,0,0,3" />
+                                    <TextBox x:Name="TxtMontoRecibidoConsulta" Text="0.00" Style="{StaticResource ModernTextBoxStyle}" Height="30" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Botón Cobrar -->
+                            <Button x:Name="BtnCobrarConsulta"
+                                    Grid.Column="2"
+                                    Content="👁️ Cobrar Consulta y Generar Recibo"
+                                    Style="{StaticResource SuccessButtonStyle}"
+                                    Width="260" Height="44"
+                                    IsEnabled="False"
+                                    Click="BtnCobrarConsulta_Click" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ========================================== -->
             <!-- 3. ABONO A PRÉSTAMOS DE EMPRENDIMIENTO    -->
             <!-- ========================================== -->
             <TabItem Header="💳 Abono a Préstamos">

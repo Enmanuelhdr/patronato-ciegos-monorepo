@@ -1,32 +1,55 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
 using Patronato.Core.Entities;
 using Patronato.Core.Enums;
+using Patronato.Core.Servicios;
 
 namespace Patronato.Core.Monitoreo
 {
     // Panel de soporte: CRUD completo (crear/editar/eliminar, además de los toggles de
     // estado que ya había) sobre las entidades que más mantenimiento manual necesitan,
     // directo sobre el Core, fuera de /api (no pasa por el Gateway ni por el JWT de la
-    // Web). Mismo candado que /monitor (X-Admin-Key).
+    // Web). Ya no se guarda con una clave compartida: se entra con usuario/contraseña
+    // reales (ver /monitor/login en MonitorEndpoints) y MonitorAuth exige los permisos
+    // monitor.ver (para leer) / monitor.gestionar (para cualquier cambio).
     public static class OperacionesEndpoints
     {
         private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger("Patronato.Core.PanelSoporte");
 
-        public static void MapOperacionesEndpoints(this WebApplication app, string? claveAdmin)
+        // El rol Administrador (SuperAdmin/IT, el único con permiso
+        // core-users.crear-superadmin) nunca se puede asignar desde aquí, ni siquiera por
+        // quien tenga monitor.gestionar: esa acción sensible siempre pasa por la pantalla
+        // "Usuarios del Core" en la Web, con su propio guardia anti-escalamiento granular
+        // (ver UsuariosController.PuedeAsignarRolAsync).
+        private static async Task<bool> EsRolRestringido(ApplicationDbContext db, int roleId) =>
+            await db.CoreRolePermissions.AnyAsync(rp => rp.RoleId == roleId && rp.Permission!.Codigo == PermisosCore.CoreUsersCrearSuperAdmin);
+
+        public static void MapOperacionesEndpoints(this WebApplication app)
         {
             app.MapGet("/monitor/operaciones", () => Results.Content(PaginaHtml, "text/html"));
 
             app.MapGet("/monitor/operaciones/datos", async (HttpContext ctx, ApplicationDbContext db) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorVer)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
                 var usuarios = await db.Usuarios.OrderBy(u => u.NombreCompleto).Select(u => new
                 {
-                    u.Id, u.NombreCompleto, u.NombreUsuario, u.Correo, u.SucursalId, u.Activo,
-                    rol = (int)u.Rol, rolTexto = u.Rol.ToString(),
+                    u.Id, u.NombreCompleto, u.NombreUsuario, u.Correo, u.SucursalId,
+                    estadoCuenta = u.EstadoCuenta.ToString(),
+                    rol = u.RoleId, rolTexto = u.Role!.Nombre,
                 }).ToListAsync();
+
+                var idsRolesRestringidos = await db.CoreRolePermissions
+                    .Where(rp => rp.Permission!.Codigo == PermisosCore.CoreUsersCrearSuperAdmin)
+                    .Select(rp => rp.RoleId)
+                    .ToListAsync();
+
+                var roles = await db.CoreRoles.OrderBy(r => r.Nombre)
+                    .Select(r => new { r.Id, r.Nombre })
+                    .ToListAsync();
+                var rolesConRestriccion = roles.Select(r => new { r.Id, r.Nombre, restringido = idsRolesRestringidos.Contains(r.Id) });
 
                 var sucursales = await db.Sucursales.OrderBy(s => s.Nombre)
                     .Select(s => new { s.Id, s.Nombre, s.Direccion, s.Telefono, s.Encargado, s.Activa })
@@ -40,41 +63,46 @@ namespace Patronato.Core.Monitoreo
                     .Select(b => new { b.Id, b.Nombres, b.Apellidos, b.Cedula, b.Telefono, b.Activo })
                     .ToListAsync();
 
-                return Results.Json(new { usuarios, sucursales, productos, beneficiarios });
+                return Results.Json(new { usuarios, roles = rolesConRestriccion, sucursales, productos, beneficiarios });
             });
 
-            app.MapPost("/monitor/operaciones/usuarios/{id:int}/activo", async (HttpContext ctx, ApplicationDbContext db, int id, CambiarActivoRequest body) =>
+            app.MapPost("/monitor/operaciones/usuarios/{id:int}/estado", async (HttpContext ctx, ApplicationDbContext db, int id, CambiarEstadoRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
+                if (!Enum.IsDefined(typeof(EstadoCuentaCore), body.Estado)) return Results.Json(new { mensaje = "Estado inválido." }, statusCode: 400);
+
                 var usuario = await db.Usuarios.FindAsync(id);
                 if (usuario == null) return Results.Json(new { mensaje = "Usuario no encontrado." }, statusCode: 404);
 
-                usuario.Activo = body.Activo;
+                usuario.EstadoCuenta = body.Estado;
                 await db.SaveChangesAsync();
-                Logger.Warn($"[Panel de soporte] Usuario #{id} ({usuario.NombreUsuario}) marcado como {(body.Activo ? "ACTIVO" : "INACTIVO")}.");
-                return Results.Json(new { mensaje = $"Usuario {(body.Activo ? "activado" : "desactivado")} correctamente." });
+                Logger.Warn($"[Panel de soporte] Usuario #{id} ({usuario.NombreUsuario}) -> estado {body.Estado}.");
+                return Results.Json(new { mensaje = $"Estado actualizado a {body.Estado}." });
             });
 
             app.MapPost("/monitor/operaciones/usuarios/{id:int}/rol", async (HttpContext ctx, ApplicationDbContext db, int id, CambiarRolRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
-                if (!Enum.IsDefined(typeof(RolUsuario), body.Rol)) return Results.Json(new { mensaje = "Rol inválido." }, statusCode: 400);
+                var nuevoRol = await db.CoreRoles.FindAsync(body.Rol);
+                if (nuevoRol == null) return Results.Json(new { mensaje = "Rol inválido." }, statusCode: 400);
+                if (await EsRolRestringido(db, nuevoRol.Id))
+                    return Results.Json(new { mensaje = $"El rol '{nuevoRol.Nombre}' (SuperAdmin/IT) no se puede asignar desde este panel de soporte. Usa 'Usuarios del Core' en la Web, con tu propia sesión." }, statusCode: 403);
 
-                var usuario = await db.Usuarios.FindAsync(id);
+                var usuario = await db.Usuarios.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
                 if (usuario == null) return Results.Json(new { mensaje = "Usuario no encontrado." }, statusCode: 404);
 
-                var rolAnterior = usuario.Rol;
-                usuario.Rol = (RolUsuario)body.Rol;
+                var rolAnterior = usuario.Role!.Nombre;
+                usuario.RoleId = nuevoRol.Id;
                 await db.SaveChangesAsync();
-                Logger.Warn($"[Panel de soporte] Usuario #{id} ({usuario.NombreUsuario}) cambió de rol {rolAnterior} -> {usuario.Rol}.");
-                return Results.Json(new { mensaje = $"Rol actualizado a {usuario.Rol}." });
+                Logger.Warn($"[Panel de soporte] Usuario #{id} ({usuario.NombreUsuario}) cambió de rol {rolAnterior} -> {nuevoRol.Nombre}.");
+                return Results.Json(new { mensaje = $"Rol actualizado a {nuevoRol.Nombre}." });
             });
 
             app.MapPost("/monitor/operaciones/sucursales/{id:int}/activa", async (HttpContext ctx, ApplicationDbContext db, int id, CambiarActivaRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var sucursal = await db.Sucursales.FindAsync(id);
                 if (sucursal == null) return Results.Json(new { mensaje = "Sucursal no encontrada." }, statusCode: 404);
@@ -87,7 +115,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapPost("/monitor/operaciones/beneficiarios/{id:int}/activo", async (HttpContext ctx, ApplicationDbContext db, int id, CambiarActivoRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var beneficiario = await db.Beneficiarios.FindAsync(id);
                 if (beneficiario == null) return Results.Json(new { mensaje = "Beneficiario no encontrado." }, statusCode: 404);
@@ -100,7 +128,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapPost("/monitor/operaciones/productos/{id:int}/ajustar-stock", async (HttpContext ctx, ApplicationDbContext db, int id, AjustarStockRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var producto = await db.ProductosArticulos.FindAsync(id);
                 if (producto == null) return Results.Json(new { mensaje = "Producto no encontrado." }, statusCode: 404);
@@ -122,31 +150,35 @@ namespace Patronato.Core.Monitoreo
             });
 
             // ================= CRUD: Usuarios =================
-            app.MapPost("/monitor/operaciones/usuarios", async (HttpContext ctx, ApplicationDbContext db, CrearUsuarioRequest body) =>
+            app.MapPost("/monitor/operaciones/usuarios", async (HttpContext ctx, ApplicationDbContext db, IPasswordHasher<Usuario> hasher, CrearUsuarioRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
-                if (!Enum.IsDefined(typeof(RolUsuario), body.Rol)) return Results.Json(new { mensaje = "Rol inválido." }, statusCode: 400);
+                var rol = await db.CoreRoles.FindAsync(body.Rol);
+                if (rol == null) return Results.Json(new { mensaje = "Rol inválido." }, statusCode: 400);
+                if (await EsRolRestringido(db, rol.Id))
+                    return Results.Json(new { mensaje = $"El rol '{rol.Nombre}' (SuperAdmin/IT) no se puede asignar desde este panel de soporte. Usa 'Usuarios del Core' en la Web, con tu propia sesión." }, statusCode: 403);
 
                 var usuario = new Usuario
                 {
                     NombreCompleto = body.NombreCompleto,
                     NombreUsuario = body.NombreUsuario,
                     Correo = body.Correo,
-                    PasswordHash = body.PasswordHash,
-                    Rol = (RolUsuario)body.Rol,
+                    RoleId = rol.Id,
                     SucursalId = body.SucursalId,
-                    Activo = true
+                    EstadoCuenta = EstadoCuentaCore.Activo,
+                    DebeCambiarPassword = true,
                 };
+                usuario.PasswordHash = hasher.HashPassword(usuario, body.PasswordHash);
                 db.Usuarios.Add(usuario);
                 await db.SaveChangesAsync();
-                Logger.Warn($"[Panel de soporte] Usuario creado: '{usuario.NombreUsuario}' ({usuario.Rol}).");
+                Logger.Warn($"[Panel de soporte] Usuario creado: '{usuario.NombreUsuario}' ({rol.Nombre}).");
                 return Results.Json(new { mensaje = "Usuario creado correctamente.", id = usuario.Id });
             });
 
             app.MapPut("/monitor/operaciones/usuarios/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id, EditarUsuarioRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var usuario = await db.Usuarios.FindAsync(id);
                 if (usuario == null) return Results.Json(new { mensaje = "Usuario no encontrado." }, statusCode: 404);
@@ -161,7 +193,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapDelete("/monitor/operaciones/usuarios/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var usuario = await db.Usuarios.FindAsync(id);
                 if (usuario == null) return Results.Json(new { mensaje = "Usuario no encontrado." }, statusCode: 404);
@@ -182,7 +214,7 @@ namespace Patronato.Core.Monitoreo
             // ================= CRUD: Sucursales =================
             app.MapPost("/monitor/operaciones/sucursales", async (HttpContext ctx, ApplicationDbContext db, CrearSucursalRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
                 var sucursal = new Sucursal
@@ -201,7 +233,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapPut("/monitor/operaciones/sucursales/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id, EditarSucursalRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var sucursal = await db.Sucursales.FindAsync(id);
                 if (sucursal == null) return Results.Json(new { mensaje = "Sucursal no encontrada." }, statusCode: 404);
@@ -217,7 +249,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapDelete("/monitor/operaciones/sucursales/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var sucursal = await db.Sucursales.FindAsync(id);
                 if (sucursal == null) return Results.Json(new { mensaje = "Sucursal no encontrada." }, statusCode: 404);
@@ -238,7 +270,7 @@ namespace Patronato.Core.Monitoreo
             // ================= CRUD: Productos (Inventario) =================
             app.MapPost("/monitor/operaciones/productos", async (HttpContext ctx, ApplicationDbContext db, CrearProductoRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
                 var producto = new ProductoArticulo
@@ -257,7 +289,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapPut("/monitor/operaciones/productos/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id, EditarProductoRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var producto = await db.ProductosArticulos.FindAsync(id);
                 if (producto == null) return Results.Json(new { mensaje = "Producto no encontrado." }, statusCode: 404);
@@ -273,7 +305,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapDelete("/monitor/operaciones/productos/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var producto = await db.ProductosArticulos.FindAsync(id);
                 if (producto == null) return Results.Json(new { mensaje = "Producto no encontrado." }, statusCode: 404);
@@ -294,7 +326,7 @@ namespace Patronato.Core.Monitoreo
             // ================= CRUD: Beneficiarios =================
             app.MapPost("/monitor/operaciones/beneficiarios", async (HttpContext ctx, ApplicationDbContext db, CrearBeneficiarioRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
                 var beneficiario = new Beneficiario
@@ -315,7 +347,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapPut("/monitor/operaciones/beneficiarios/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id, EditarBeneficiarioRequest body) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var beneficiario = await db.Beneficiarios.FindAsync(id);
                 if (beneficiario == null) return Results.Json(new { mensaje = "Beneficiario no encontrado." }, statusCode: 404);
@@ -331,7 +363,7 @@ namespace Patronato.Core.Monitoreo
 
             app.MapDelete("/monitor/operaciones/beneficiarios/{id:int}", async (HttpContext ctx, ApplicationDbContext db, int id) =>
             {
-                if (!AdminAuth.EsValida(ctx, claveAdmin)) return Results.Json(new { mensaje = "Clave inválida." }, statusCode: 401);
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
                 var beneficiario = await db.Beneficiarios.FindAsync(id);
                 if (beneficiario == null) return Results.Json(new { mensaje = "Beneficiario no encontrado." }, statusCode: 404);
@@ -352,6 +384,7 @@ namespace Patronato.Core.Monitoreo
 
         private record CambiarActivoRequest(bool Activo);
         private record CambiarActivaRequest(bool Activa);
+        private record CambiarEstadoRequest(EstadoCuentaCore Estado);
         private record CambiarRolRequest(int Rol);
         private record AjustarStockRequest(int Delta);
 
@@ -411,8 +444,9 @@ namespace Patronato.Core.Monitoreo
 
 <div id="login" class="login">
   <h2>🔒 Operaciones del Core</h2>
-  <p style="color:#94a3b8;font-size:13px;">Acceso directo de soporte/mantenimiento. Pega la clave del Gateway (X-Admin-Key).</p>
-  <input id="clave" type="password" placeholder="Clave de administración" />
+  <p style="color:#94a3b8;font-size:13px;">Acceso directo de soporte/mantenimiento. Inicia sesión con tu usuario del Core.</p>
+  <input id="usuario" placeholder="Usuario" autocomplete="username" />
+  <input id="clave" type="password" placeholder="Contraseña" autocomplete="current-password" />
   <button onclick="conectar()">Entrar</button>
   <p id="loginError" style="color:#f87171;font-size:12px;"></p>
 </div>
@@ -423,30 +457,34 @@ namespace Patronato.Core.Monitoreo
       <h1>Patronato.Core · Operaciones</h1>
       <small>Acceso directo, fuera del Gateway — acciones administrativas puntuales</small>
     </div>
-    <a href="/monitor" style="color:#60a5fa;text-decoration:none;font-size:13px;">← Monitor de logs</a>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <span id="sesionTexto" style="color:#94a3b8;font-size:12px;"></span>
+      <button onclick="cerrarSesion()" style="background:#374151;font-size:12px;padding:6px 10px;">Salir</button>
+      <a href="/monitor" style="color:#60a5fa;text-decoration:none;font-size:13px;">← Monitor de logs</a>
+    </div>
   </header>
 
   <main>
     <div class="panel">
-      <h2>Usuarios / Empleados <button onclick="crearUsuario()">+ Nuevo</button></h2>
+      <h2>Usuarios / Empleados <button class="solo-gestion" onclick="crearUsuario()">+ Nuevo</button></h2>
       <table><thead><tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Sucursal</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody id="tablaUsuarios"></tbody></table>
     </div>
 
     <div class="panel">
-      <h2>Sucursales <button onclick="crearSucursal()">+ Nueva</button></h2>
+      <h2>Sucursales <button class="solo-gestion" onclick="crearSucursal()">+ Nueva</button></h2>
       <table><thead><tr><th>Nombre</th><th>Dirección</th><th>Teléfono</th><th>Encargado</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody id="tablaSucursales"></tbody></table>
     </div>
 
     <div class="panel">
-      <h2>Inventario <button onclick="crearProducto()">+ Nuevo</button></h2>
+      <h2>Inventario <button class="solo-gestion" onclick="crearProducto()">+ Nuevo</button></h2>
       <table><thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Ajustar</th><th>Acciones</th></tr></thead>
       <tbody id="tablaProductos"></tbody></table>
     </div>
 
     <div class="panel">
-      <h2>Beneficiarios <button onclick="crearBeneficiario()">+ Nuevo</button></h2>
+      <h2>Beneficiarios <button class="solo-gestion" onclick="crearBeneficiario()">+ Nuevo</button></h2>
       <table><thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody id="tablaBeneficiarios"></tbody></table>
     </div>
@@ -455,30 +493,55 @@ namespace Patronato.Core.Monitoreo
 <div id="mensaje" class="oculto"></div>
 
 <script>
-let clave = sessionStorage.getItem('adminKey') || '';
-const ROLES = { 1: 'Administrador', 2: 'Cajero', 3: 'MedicoOftalmologo', 4: 'InstructorRehabilitacion', 5: 'Recepcionista' };
+let token = sessionStorage.getItem('monitorToken') || '';
+let MI_PERMISOS = new Set();
+let ROLES = {}; // se llena con d.roles en cada pintar() — los ids ya no son fijos (ver CoreRole)
+let ROLES_RESTRINGIDOS = new Set(); // roles que este panel no puede asignar (ver EsRolRestringido en el servidor)
+const ESTADOS = ['Activo', 'Suspendido', 'Revocado'];
 
-if (clave) conectar(true);
+if (token) conectar(true);
 
-function conectar(silencioso) {
-  if (!silencioso) clave = document.getElementById('clave').value.trim();
-  if (!clave) return;
-  fetch('/monitor/operaciones/datos', { headers: { 'X-Admin-Key': clave } }).then(async r => {
-    if (r.status === 401) {
-      sessionStorage.removeItem('adminKey');
-      document.getElementById('loginError').textContent = 'Clave incorrecta.';
+async function conectar(silencioso) {
+  if (!silencioso) {
+    const usuario = document.getElementById('usuario').value.trim();
+    const clave = document.getElementById('clave').value;
+    if (!usuario || !clave) return;
+    const r = await fetch('/monitor/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombreUsuario: usuario, password: clave }) });
+    const datos = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      document.getElementById('loginError').textContent = datos.mensaje || 'No se pudo iniciar sesión.';
       return;
     }
-    sessionStorage.setItem('adminKey', clave);
+    token = datos.token;
+    sessionStorage.setItem('monitorToken', token);
+    sessionStorage.setItem('monitorSesion', JSON.stringify({ nombre: datos.nombre, rol: datos.rol, permisos: datos.permisos }));
+  }
+
+  fetch('/monitor/operaciones/datos', { headers: { 'Authorization': 'Bearer ' + token } }).then(async r => {
+    if (r.status === 401 || r.status === 403) {
+      cerrarSesion();
+      document.getElementById('loginError').textContent = 'Sesión inválida o sin acceso. Inicia sesión de nuevo.';
+      return;
+    }
+    const sesion = JSON.parse(sessionStorage.getItem('monitorSesion') || '{}');
+    MI_PERMISOS = new Set(sesion.permisos || []);
+    document.getElementById('sesionTexto').textContent = sesion.nombre ? `${sesion.nombre} (${sesion.rol})` : '';
     document.getElementById('login').classList.add('oculto');
     document.getElementById('app').classList.remove('oculto');
+    document.querySelectorAll('.solo-gestion').forEach(el => el.style.display = MI_PERMISOS.has('monitor.gestionar') ? '' : 'none');
     pintar(await r.json());
   }).catch(() => { document.getElementById('loginError').textContent = 'No se pudo conectar al Core.'; });
 }
 
+function cerrarSesion() {
+  sessionStorage.removeItem('monitorToken');
+  sessionStorage.removeItem('monitorSesion');
+  location.reload();
+}
+
 function cargar() {
-  fetch('/monitor/operaciones/datos', { headers: { 'X-Admin-Key': clave } }).then(async r => {
-    if (r.status === 401) { location.reload(); return; }
+  fetch('/monitor/operaciones/datos', { headers: { 'Authorization': 'Bearer ' + token } }).then(async r => {
+    if (r.status === 401 || r.status === 403) { cerrarSesion(); return; }
     pintar(await r.json());
   });
 }
@@ -491,9 +554,13 @@ function mostrarMensaje(texto, esError) {
 }
 
 async function enviar(ruta, body, metodo) {
+  if (!MI_PERMISOS.has('monitor.gestionar')) {
+    mostrarMensaje('Tu usuario solo tiene acceso de auditoría (solo lectura) en este panel.', true);
+    return false;
+  }
   const r = await fetch(ruta, {
     method: metodo || 'POST',
-    headers: { 'X-Admin-Key': clave, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const datos = await r.json().catch(() => ({}));
@@ -502,8 +569,16 @@ async function enviar(ruta, body, metodo) {
   return r.ok;
 }
 
-function toggleUsuario(id, activo) { enviar(`/monitor/operaciones/usuarios/${id}/activo`, { activo: !activo }); }
-function cambiarRol(id, select) { enviar(`/monitor/operaciones/usuarios/${id}/rol`, { rol: Number(select.value) }); }
+function cambiarEstado(id, select) { enviar(`/monitor/operaciones/usuarios/${id}/estado`, { estado: select.value }); }
+function cambiarRol(id, select) {
+  const rolId = Number(select.value);
+  if (ROLES_RESTRINGIDOS.has(rolId)) {
+    mostrarMensaje(`El rol '${ROLES[rolId]}' (SuperAdmin/IT) no se puede asignar desde aquí. Usa 'Usuarios del Core' en la Web.`, true);
+    cargar(); // repinta el select de vuelta a su valor anterior
+    return;
+  }
+  enviar(`/monitor/operaciones/usuarios/${id}/rol`, { rol: rolId });
+}
 function toggleSucursal(id, activa) { enviar(`/monitor/operaciones/sucursales/${id}/activa`, { activa: !activa }); }
 function toggleBeneficiario(id, activo) { enviar(`/monitor/operaciones/beneficiarios/${id}/activo`, { activo: !activo }); }
 function ajustarStock(id, input) {
@@ -519,8 +594,12 @@ function crearUsuario() {
   const nombreCompleto = prompt('Nombre completo:'); if (!nombreCompleto) return;
   const nombreUsuario = prompt('Usuario (login):'); if (!nombreUsuario) return;
   const correo = prompt('Correo:') || '';
-  const passwordHash = prompt('Contraseña inicial:'); if (!passwordHash) return;
-  const rol = prompt('Rol (1 Administrador, 2 Cajero, 3 MedicoOftalmologo, 4 InstructorRehabilitacion, 5 Recepcionista):', '2');
+  const passwordHash = prompt('Contraseña inicial (el empleado la cambia en su primer ingreso):'); if (!passwordHash) return;
+  const rolesAsignables = Object.entries(ROLES).filter(([v]) => !ROLES_RESTRINGIDOS.has(Number(v)));
+  const listaRoles = rolesAsignables.map(([v, t]) => `${v}=${t}`).join(', ');
+  const rol = prompt(`Rol (${listaRoles}) — 'Administrador' no se puede crear desde aquí, usa la Web:`, rolesAsignables[0]?.[0] || '');
+  if (!rol) return;
+  if (ROLES_RESTRINGIDOS.has(Number(rol))) return mostrarMensaje('Ese rol no se puede asignar desde este panel.', true);
   const sucursalId = prompt('ID de sucursal:', '1');
   enviar('/monitor/operaciones/usuarios', { nombreCompleto, nombreUsuario, correo, passwordHash, rol: Number(rol), sucursalId: Number(sucursalId) });
 }
@@ -603,56 +682,61 @@ let ultimoDato = { usuarios: [], sucursales: [], productos: [], beneficiarios: [
 
 function pintar(d) {
   ultimoDato = d;
+  ROLES = Object.fromEntries((d.roles || []).map(r => [r.id, r.nombre]));
+  ROLES_RESTRINGIDOS = new Set((d.roles || []).filter(r => r.restringido).map(r => r.id));
+  const puedeGestionar = MI_PERMISOS.has('monitor.gestionar');
+  const dis = puedeGestionar ? '' : 'disabled';
 
   document.getElementById('tablaUsuarios').innerHTML = d.usuarios.map(u => `
     <tr>
       <td>${u.nombreCompleto}</td>
       <td>${u.nombreUsuario}</td>
       <td>${u.correo ?? ''}</td>
-      <td><select onchange="cambiarRol(${u.id}, this)">
-        ${Object.entries(ROLES).map(([v, t]) => `<option value="${v}" ${Number(v) === u.rol ? 'selected' : ''}>${t}</option>`).join('')}
+      <td><select ${dis} onchange="cambiarRol(${u.id}, this)">
+        ${Object.entries(ROLES).map(([v, t]) => `<option value="${v}" ${Number(v) === u.rol ? 'selected' : ''}>${t}${ROLES_RESTRINGIDOS.has(Number(v)) ? ' 🔒' : ''}</option>`).join('')}
       </select></td>
       <td>#${u.sucursalId}</td>
-      <td><span class="tag ${u.activo ? 'tag-ok' : 'tag-mal'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
-      <td class="accion">
+      <td><select ${dis} onchange="cambiarEstado(${u.id}, this)">
+        ${ESTADOS.map(e => `<option value="${e}" ${e === u.estadoCuenta ? 'selected' : ''}>${e}</option>`).join('')}
+      </select></td>
+      <td class="accion">${!puedeGestionar ? '—' : `
         <button onclick="editarUsuario(ultimoDato.usuarios.find(x=>x.id===${u.id}))">Editar</button>
-        <button class="${u.activo ? 'peligro' : 'exito'}" onclick="toggleUsuario(${u.id}, ${u.activo})">${u.activo ? 'Desactivar' : 'Activar'}</button>
         <button class="peligro" onclick="eliminarUsuario(${u.id}, '${(u.nombreCompleto || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      </td>
+      `}</td>
     </tr>`).join('');
 
   document.getElementById('tablaSucursales').innerHTML = d.sucursales.map(s => `
     <tr>
       <td>${s.nombre}</td><td>${s.direccion}</td><td>${s.telefono}</td><td>${s.encargado}</td>
       <td><span class="tag ${s.activa ? 'tag-ok' : 'tag-mal'}">${s.activa ? 'Activa' : 'Inactiva'}</span></td>
-      <td class="accion">
+      <td class="accion">${!puedeGestionar ? '—' : `
         <button onclick="editarSucursal(ultimoDato.sucursales.find(x=>x.id===${s.id}))">Editar</button>
         <button class="${s.activa ? 'peligro' : 'exito'}" onclick="toggleSucursal(${s.id}, ${s.activa})">${s.activa ? 'Desactivar' : 'Activar'}</button>
         <button class="peligro" onclick="eliminarSucursal(${s.id}, '${(s.nombre || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      </td>
+      `}</td>
     </tr>`).join('');
 
   document.getElementById('tablaProductos').innerHTML = d.productos.map(p => `
     <tr>
       <td>${p.codigo}</td><td>${p.nombre}</td><td>${p.categoria}</td>
       <td>RD$ ${p.precioVenta.toFixed(2)}</td><td>${p.stockDisponible}</td>
-      <td class="accion"><input class="stock" type="number" placeholder="±cant." id="stock-${p.id}" />
-        <button class="exito" onclick="ajustarStock(${p.id}, document.getElementById('stock-${p.id}'))">Ajustar</button></td>
-      <td class="accion">
+      <td class="accion">${!puedeGestionar ? '—' : `<input class="stock" type="number" placeholder="±cant." id="stock-${p.id}" />
+        <button class="exito" onclick="ajustarStock(${p.id}, document.getElementById('stock-${p.id}'))">Ajustar</button>`}</td>
+      <td class="accion">${!puedeGestionar ? '—' : `
         <button onclick="editarProducto(ultimoDato.productos.find(x=>x.id===${p.id}))">Editar</button>
         <button class="peligro" onclick="eliminarProducto(${p.id}, '${(p.nombre || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      </td>
+      `}</td>
     </tr>`).join('');
 
   document.getElementById('tablaBeneficiarios').innerHTML = d.beneficiarios.map(b => `
     <tr>
       <td>${b.nombres} ${b.apellidos}</td><td>${b.cedula}</td><td>${b.telefono}</td>
       <td><span class="tag ${b.activo ? 'tag-ok' : 'tag-mal'}">${b.activo ? 'Activo' : 'Inactivo'}</span></td>
-      <td class="accion">
+      <td class="accion">${!puedeGestionar ? '—' : `
         <button onclick="editarBeneficiario(ultimoDato.beneficiarios.find(x=>x.id===${b.id}))">Editar</button>
         <button class="${b.activo ? 'peligro' : 'exito'}" onclick="toggleBeneficiario(${b.id}, ${b.activo})">${b.activo ? 'Desactivar' : 'Activar'}</button>
         <button class="peligro" onclick="eliminarBeneficiario(${b.id}, '${(b.nombres || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      </td>
+      `}</td>
     </tr>`).join('');
 }
 </script>

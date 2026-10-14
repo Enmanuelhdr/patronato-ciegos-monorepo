@@ -41,6 +41,7 @@ export function TransaccionesPage() {
           <StatCard etiqueta="VENTAS POS" valor={`RD$ ${cuadre.data.porConcepto.ventasProductos.toFixed(2)}`} tono="verde" />
           <StatCard etiqueta="MASAJES TACTO" valor={`RD$ ${cuadre.data.porConcepto.masajesTacto.toFixed(2)}`} tono="morado" />
           <StatCard etiqueta="ABONOS + DONACIONES" valor={`RD$ ${(cuadre.data.porConcepto.abonosPrestamos + cuadre.data.porConcepto.donaciones).toFixed(2)}`} tono="ambar" />
+          <StatCard etiqueta="CONSULTAS OFTALMOLÓGICAS" valor={`RD$ ${cuadre.data.porConcepto.consultas.toFixed(2)}`} tono="cyan" />
         </div>
       )}
 
