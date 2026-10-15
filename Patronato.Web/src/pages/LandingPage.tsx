@@ -48,9 +48,14 @@ export function LandingPage() {
           <div className="sidebar-escudo">PNC</div>
           <span>Patronato Nacional de Ciegos</span>
         </div>
-        <Link to={sesion ? "/panel" : "/login"} className="btn btn-primario">
-          {sesion ? "Ir al Portal" : "Iniciar sesión"}
-        </Link>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Link to="/agendar-cita?tab=consultar" className="btn btn-secundario">
+            🔍 Consultar mi cita
+          </Link>
+          <Link to={sesion ? "/panel" : "/login"} className="btn btn-primario">
+            {sesion ? "Ir al Portal" : "Iniciar sesión"}
+          </Link>
+        </div>
       </header>
 
       <section className="landing-hero">
@@ -63,6 +68,7 @@ export function LandingPage() {
           </p>
           <div className="landing-hero-acciones">
             <Link to="/agendar-cita" className="btn btn-primario">Agenda tu cita</Link>
+            <Link to="/agendar-cita?tab=consultar" className="btn btn-secundario">Consultar estado de mi cita</Link>
             <a href="#programas" className="btn btn-secundario">Conoce nuestros programas</a>
           </div>
         </div>

@@ -94,6 +94,8 @@ builder.Services.AddSwaggerGen(c =>
         requerimiento.Add(new OpenApiSecuritySchemeReference("GatewayKey", doc, null), new List<string>());
         return requerimiento;
     });
+
+    c.CustomSchemaIds(type => type.FullName?.Replace('+', '.'));
 });
 
 var app = builder.Build();
@@ -175,5 +177,6 @@ app.MapOperacionesEndpoints();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/", () => Results.Redirect("/swagger"));
 
 app.Run();

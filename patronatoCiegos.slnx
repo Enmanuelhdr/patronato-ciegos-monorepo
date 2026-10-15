@@ -2,4 +2,5 @@
   <Project Path="Patronato.Caja/Patronato.Caja.csproj" />
   <Project Path="Patronato.Core/Patronato.Core.csproj" />
   <Project Path="Patronato.Gateway/Patronato.Gateway.csproj" />
+  <Project Path="Patronato.Web/Patronato.Web.csproj" />
 </Solution>

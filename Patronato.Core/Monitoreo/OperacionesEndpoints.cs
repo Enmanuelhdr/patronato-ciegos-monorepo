@@ -435,9 +435,42 @@ namespace Patronato.Core.Monitoreo
   .tag-ok { background: #065f46; color: #6ee7b7; }
   .tag-mal { background: #450a0a; color: #f87171; }
   .accion { display: flex; gap: 6px; align-items: center; }
-  #mensaje { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 10; }
+  #mensaje { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 1000; }
   #mensaje.ok { background: #065f46; color: #d1fae5; }
   #mensaje.error { background: #450a0a; color: #fecaca; }
+
+  /* Modal Formulario */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.72); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center; z-index: 500;
+  }
+  .modal-overlay.oculto { display: none; }
+  .modal-card {
+    background: #111827; border: 1px solid #334155; border-radius: 12px;
+    width: 95%; max-width: 520px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+    overflow: hidden; animation: popIn 0.15s ease-out;
+  }
+  @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid #1f2937; background: #1a2234;
+  }
+  .btn-cerrar { background: transparent; border: none; font-size: 22px; color: #94a3b8; cursor: pointer; padding: 0 6px; line-height: 1; border-radius: 4px; }
+  .btn-cerrar:hover { color: #f87171; background: rgba(239, 68, 68, 0.1); }
+  .modal-campos { padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-height: 70vh; overflow-y: auto; }
+  .modal-campos .col-span-2 { grid-column: span 2; }
+  .campo-item { display: flex; flex-direction: column; gap: 5px; }
+  .campo-item label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .campo-item input, .campo-item select {
+    background: #0b1120; border: 1px solid #334155; color: #e2e8f0;
+    padding: 8px 11px; border-radius: 6px; font-size: 13px; outline: none; width: 100%; box-sizing: border-box;
+  }
+  .campo-item input:focus, .campo-item select:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+  .modal-acciones {
+    display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px;
+    border-top: 1px solid #1f2937; background: #0f172a;
+  }
 </style>
 </head>
 <body>
@@ -491,6 +524,23 @@ namespace Patronato.Core.Monitoreo
   </main>
 </div>
 <div id="mensaje" class="oculto"></div>
+
+<!-- Modal Formulario Rápido -->
+<div id="modalOverlay" class="modal-overlay oculto" onclick="clickFondoModal(event)">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modalTitulo" style="margin:0;font-size:15px;font-weight:600;">Formulario</h3>
+      <button type="button" onclick="cerrarModal()" class="btn-cerrar">&times;</button>
+    </div>
+    <form id="modalForm" onsubmit="enviarModal(event)">
+      <div id="modalCampos" class="modal-campos"></div>
+      <div class="modal-acciones">
+        <button type="button" onclick="cerrarModal()" style="background:#374151;">Cancelar</button>
+        <button type="submit" class="exito" id="modalBtnGuardar">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script>
 let token = sessionStorage.getItem('monitorToken') || '';
@@ -588,90 +638,308 @@ function ajustarStock(id, input) {
   input.value = '';
 }
 
-// ---- CRUD rápido vía prompt(): este panel es de soporte/mantenimiento puntual, no
-// pretende ser una pantalla bonita — prioriza que cualquier campo se pueda arreglar rápido.
+// ---- Sistema de Modal Unificado (rápido y sin prompts molestos) ----
+let modalAccion = null;
+
+function abrirModal({ titulo, botonTexto = 'Guardar', campos, onGuardar }) {
+  document.getElementById('modalTitulo').textContent = titulo;
+  document.getElementById('modalBtnGuardar').textContent = botonTexto;
+  modalAccion = onGuardar;
+
+  const cont = document.getElementById('modalCampos');
+  cont.innerHTML = campos.map(c => {
+    const colClass = c.colSpan ? `col-span-${c.colSpan}` : '';
+    let controlHtml = '';
+
+    if (c.tipo === 'select') {
+      const opciones = (c.opciones || []).map(op =>
+        `<option value="${op.valor}" ${String(op.valor) === String(c.valor) ? 'selected' : ''} ${op.disabled ? 'disabled' : ''}>${op.texto}</option>`
+      ).join('');
+      controlHtml = `<select id="campo_${c.nombre}" name="${c.nombre}" ${c.requerido ? 'required' : ''}>${opciones}</select>`;
+    } else {
+      controlHtml = `<input id="campo_${c.nombre}" name="${c.nombre}" type="${c.tipo || 'text'}" value="${c.valor ?? ''}" placeholder="${c.placeholder ?? ''}" ${c.step ? `step="${c.step}"` : ''} ${c.min !== undefined ? `min="${c.min}"` : ''} ${c.requerido ? 'required' : ''} autocomplete="off" />`;
+    }
+
+    return `
+      <div class="campo-item ${colClass}">
+        <label for="campo_${c.nombre}">${c.etiqueta}${c.requerido ? ' <span style="color:#f87171;">*</span>' : ''}</label>
+        ${controlHtml}
+        ${c.ayuda ? `<span style="font-size:11px;color:#94a3b8;margin-top:2px;">${c.ayuda}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('modalOverlay').classList.remove('oculto');
+  const primerInput = cont.querySelector('input, select');
+  if (primerInput) setTimeout(() => primerInput.focus(), 50);
+}
+
+function cerrarModal() {
+  document.getElementById('modalOverlay').classList.add('oculto');
+  modalAccion = null;
+}
+
+function clickFondoModal(e) {
+  if (e.target.id === 'modalOverlay') cerrarModal();
+}
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') cerrarModal();
+});
+
+async function enviarModal(e) {
+  e.preventDefault();
+  if (!modalAccion) return;
+  const form = e.target;
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData.entries());
+  const btn = document.getElementById('modalBtnGuardar');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  try {
+    const ok = await modalAccion(data);
+    if (ok) cerrarModal();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ---- CRUD de Usuarios ----
 function crearUsuario() {
-  const nombreCompleto = prompt('Nombre completo:'); if (!nombreCompleto) return;
-  const nombreUsuario = prompt('Usuario (login):'); if (!nombreUsuario) return;
-  const correo = prompt('Correo:') || '';
-  const passwordHash = prompt('Contraseña inicial (el empleado la cambia en su primer ingreso):'); if (!passwordHash) return;
-  const rolesAsignables = Object.entries(ROLES).filter(([v]) => !ROLES_RESTRINGIDOS.has(Number(v)));
-  const listaRoles = rolesAsignables.map(([v, t]) => `${v}=${t}`).join(', ');
-  const rol = prompt(`Rol (${listaRoles}) — 'Administrador' no se puede crear desde aquí, usa la Web:`, rolesAsignables[0]?.[0] || '');
-  if (!rol) return;
-  if (ROLES_RESTRINGIDOS.has(Number(rol))) return mostrarMensaje('Ese rol no se puede asignar desde este panel.', true);
-  const sucursalId = prompt('ID de sucursal:', '1');
-  enviar('/monitor/operaciones/usuarios', { nombreCompleto, nombreUsuario, correo, passwordHash, rol: Number(rol), sucursalId: Number(sucursalId) });
+  const rolesAsignables = Object.entries(ROLES)
+    .filter(([v]) => !ROLES_RESTRINGIDOS.has(Number(v)))
+    .map(([v, t]) => ({ valor: v, texto: t }));
+
+  const sucursalesOpciones = (ultimoDato.sucursales || []).map(s => ({
+    valor: s.id,
+    texto: `${s.nombre} (#${s.id})`
+  }));
+  if (sucursalesOpciones.length === 0) sucursalesOpciones.push({ valor: 1, texto: 'Sede Principal (#1)' });
+
+  abrirModal({
+    titulo: 'Nuevo Usuario / Empleado',
+    botonTexto: 'Crear Usuario',
+    campos: [
+      { nombre: 'nombreCompleto', etiqueta: 'Nombre Completo', requerido: true, colSpan: 2 },
+      { nombre: 'nombreUsuario', etiqueta: 'Usuario (Login)', requerido: true },
+      { nombre: 'passwordHash', etiqueta: 'Contraseña Inicial', tipo: 'password', requerido: true, ayuda: 'El empleado la cambiará en su primer ingreso' },
+      { nombre: 'correo', etiqueta: 'Correo Electrónico', tipo: 'email', colSpan: 2 },
+      { nombre: 'rol', etiqueta: 'Rol', tipo: 'select', opciones: rolesAsignables, valor: rolesAsignables[0]?.valor },
+      { nombre: 'sucursalId', etiqueta: 'Sucursal', tipo: 'select', opciones: sucursalesOpciones, valor: sucursalesOpciones[0]?.valor }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar('/monitor/operaciones/usuarios', {
+        nombreCompleto: datos.nombreCompleto.trim(),
+        nombreUsuario: datos.nombreUsuario.trim(),
+        correo: datos.correo.trim(),
+        passwordHash: datos.passwordHash,
+        rol: Number(datos.rol),
+        sucursalId: Number(datos.sucursalId)
+      });
+    }
+  });
 }
+
 function editarUsuario(u) {
-  const nombreCompleto = prompt('Nombre completo:', u.nombreCompleto); if (!nombreCompleto) return;
-  const correo = prompt('Correo:', u.correo) || '';
-  const sucursalId = prompt('ID de sucursal:', u.sucursalId);
-  enviar(`/monitor/operaciones/usuarios/${u.id}`, { nombreCompleto, correo, sucursalId: Number(sucursalId) }, 'PUT');
+  const sucursalesOpciones = (ultimoDato.sucursales || []).map(s => ({
+    valor: s.id,
+    texto: `${s.nombre} (#${s.id})`
+  }));
+  if (sucursalesOpciones.length === 0) sucursalesOpciones.push({ valor: u.sucursalId, texto: `#${u.sucursalId}` });
+
+  abrirModal({
+    titulo: `Editar Usuario: ${u.nombreUsuario}`,
+    botonTexto: 'Guardar Cambios',
+    campos: [
+      { nombre: 'nombreCompleto', etiqueta: 'Nombre Completo', valor: u.nombreCompleto, requerido: true, colSpan: 2 },
+      { nombre: 'correo', etiqueta: 'Correo Electrónico', tipo: 'email', valor: u.correo || '', colSpan: 2 },
+      { nombre: 'sucursalId', etiqueta: 'Sucursal', tipo: 'select', opciones: sucursalesOpciones, valor: u.sucursalId, colSpan: 2 }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar(`/monitor/operaciones/usuarios/${u.id}`, {
+        nombreCompleto: datos.nombreCompleto.trim(),
+        correo: datos.correo.trim(),
+        sucursalId: Number(datos.sucursalId)
+      }, 'PUT');
+    }
+  });
 }
+
 function eliminarUsuario(id, nombre) {
   if (confirm(`¿Eliminar permanentemente a "${nombre}"? Esta acción no se puede deshacer.`)) {
     enviar(`/monitor/operaciones/usuarios/${id}`, undefined, 'DELETE');
   }
 }
 
+// ---- CRUD de Sucursales ----
 function crearSucursal() {
-  const nombre = prompt('Nombre de la sucursal:'); if (!nombre) return;
-  const direccion = prompt('Dirección:') || '';
-  const telefono = prompt('Teléfono:') || '';
-  const encargado = prompt('Encargado:') || '';
-  enviar('/monitor/operaciones/sucursales', { nombre, direccion, telefono, encargado });
+  abrirModal({
+    titulo: 'Nueva Sucursal',
+    botonTexto: 'Crear Sucursal',
+    campos: [
+      { nombre: 'nombre', etiqueta: 'Nombre de Sucursal', requerido: true, colSpan: 2 },
+      { nombre: 'direccion', etiqueta: 'Dirección', colSpan: 2 },
+      { nombre: 'telefono', etiqueta: 'Teléfono' },
+      { nombre: 'encargado', etiqueta: 'Encargado' }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar('/monitor/operaciones/sucursales', {
+        nombre: datos.nombre.trim(),
+        direccion: datos.direccion.trim(),
+        telefono: datos.telefono.trim(),
+        encargado: datos.encargado.trim()
+      });
+    }
+  });
 }
+
 function editarSucursal(s) {
-  const nombre = prompt('Nombre:', s.nombre); if (!nombre) return;
-  const direccion = prompt('Dirección:', s.direccion) || '';
-  const telefono = prompt('Teléfono:', s.telefono) || '';
-  const encargado = prompt('Encargado:', s.encargado) || '';
-  enviar(`/monitor/operaciones/sucursales/${s.id}`, { nombre, direccion, telefono, encargado }, 'PUT');
+  abrirModal({
+    titulo: `Editar Sucursal: ${s.nombre}`,
+    botonTexto: 'Guardar Cambios',
+    campos: [
+      { nombre: 'nombre', etiqueta: 'Nombre de Sucursal', valor: s.nombre, requerido: true, colSpan: 2 },
+      { nombre: 'direccion', etiqueta: 'Dirección', valor: s.direccion || '', colSpan: 2 },
+      { nombre: 'telefono', etiqueta: 'Teléfono', valor: s.telefono || '' },
+      { nombre: 'encargado', etiqueta: 'Encargado', valor: s.encargado || '' }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar(`/monitor/operaciones/sucursales/${s.id}`, {
+        nombre: datos.nombre.trim(),
+        direccion: datos.direccion.trim(),
+        telefono: datos.telefono.trim(),
+        encargado: datos.encargado.trim()
+      }, 'PUT');
+    }
+  });
 }
+
 function eliminarSucursal(id, nombre) {
   if (confirm(`¿Eliminar permanentemente la sucursal "${nombre}"?`)) {
     enviar(`/monitor/operaciones/sucursales/${id}`, undefined, 'DELETE');
   }
 }
 
+// ---- CRUD de Inventario / Productos ----
 function crearProducto() {
-  const codigo = prompt('Código:'); if (!codigo) return;
-  const nombre = prompt('Nombre:'); if (!nombre) return;
-  const categoria = prompt('Categoría:') || '';
-  const precioVenta = prompt('Precio de venta:', '0');
-  const stockDisponible = prompt('Stock inicial:', '0');
-  enviar('/monitor/operaciones/productos', { codigo, nombre, categoria, precioVenta: Number(precioVenta), stockDisponible: Number(stockDisponible) });
+  abrirModal({
+    titulo: 'Nuevo Producto / Artículo',
+    botonTexto: 'Crear Producto',
+    campos: [
+      { nombre: 'codigo', etiqueta: 'Código (ej. PROD-001)', requerido: true },
+      { nombre: 'nombre', etiqueta: 'Nombre del Producto', requerido: true },
+      { nombre: 'categoria', etiqueta: 'Categoría (ej. Óptica, Bastones, Accesorios)', colSpan: 2 },
+      { nombre: 'precioVenta', etiqueta: 'Precio de Venta (RD$)', tipo: 'number', step: '0.01', min: '0', valor: '0.00', requerido: true },
+      { nombre: 'stockDisponible', etiqueta: 'Stock Inicial', tipo: 'number', min: '0', valor: '0', requerido: true }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar('/monitor/operaciones/productos', {
+        codigo: datos.codigo.trim(),
+        nombre: datos.nombre.trim(),
+        categoria: datos.categoria.trim(),
+        precioVenta: Number(datos.precioVenta),
+        stockDisponible: Number(datos.stockDisponible)
+      });
+    }
+  });
 }
+
 function editarProducto(p) {
-  const codigo = prompt('Código:', p.codigo); if (!codigo) return;
-  const nombre = prompt('Nombre:', p.nombre); if (!nombre) return;
-  const categoria = prompt('Categoría:', p.categoria) || '';
-  const precioVenta = prompt('Precio de venta:', p.precioVenta);
-  enviar(`/monitor/operaciones/productos/${p.id}`, { codigo, nombre, categoria, precioVenta: Number(precioVenta) }, 'PUT');
+  abrirModal({
+    titulo: `Editar Producto: ${p.nombre}`,
+    botonTexto: 'Guardar Cambios',
+    campos: [
+      { nombre: 'codigo', etiqueta: 'Código', valor: p.codigo, requerido: true },
+      { nombre: 'nombre', etiqueta: 'Nombre', valor: p.nombre, requerido: true },
+      { nombre: 'categoria', etiqueta: 'Categoría', valor: p.categoria || '', colSpan: 2 },
+      { nombre: 'precioVenta', etiqueta: 'Precio de Venta (RD$)', tipo: 'number', step: '0.01', min: '0', valor: p.precioVenta, requerido: true, colSpan: 2 }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar(`/monitor/operaciones/productos/${p.id}`, {
+        codigo: datos.codigo.trim(),
+        nombre: datos.nombre.trim(),
+        categoria: datos.categoria.trim(),
+        precioVenta: Number(datos.precioVenta)
+      }, 'PUT');
+    }
+  });
 }
+
 function eliminarProducto(id, nombre) {
   if (confirm(`¿Eliminar permanentemente el producto "${nombre}"?`)) {
     enviar(`/monitor/operaciones/productos/${id}`, undefined, 'DELETE');
   }
 }
 
+// ---- CRUD de Beneficiarios ----
 function crearBeneficiario() {
-  const nombres = prompt('Nombres:'); if (!nombres) return;
-  const apellidos = prompt('Apellidos:'); if (!apellidos) return;
-  const cedula = prompt('Cédula:') || '';
-  const telefono = prompt('Teléfono:') || '';
-  const sedeAsignada = prompt('Sede (1 Santo Domingo, 2 Santiago, 3 Barahona):', '1');
-  const condicionVisual = prompt('Condición visual (1 Baja Visión, 2 Ceguera Congénita, 3 Ceguera Adquirida):', '1');
-  enviar('/monitor/operaciones/beneficiarios', { nombres, apellidos, cedula, telefono, sedeAsignada: Number(sedeAsignada), condicionVisual: Number(condicionVisual) });
+  abrirModal({
+    titulo: 'Nuevo Beneficiario',
+    botonTexto: 'Crear Beneficiario',
+    campos: [
+      { nombre: 'nombres', etiqueta: 'Nombres', requerido: true },
+      { nombre: 'apellidos', etiqueta: 'Apellidos', requerido: true },
+      { nombre: 'cedula', etiqueta: 'Cédula / Identificación' },
+      { nombre: 'telefono', etiqueta: 'Teléfono' },
+      {
+        nombre: 'sedeAsignada',
+        etiqueta: 'Sede Asignada',
+        tipo: 'select',
+        opciones: [
+          { valor: 1, texto: 'Santo Domingo' },
+          { valor: 2, texto: 'Santiago' },
+          { valor: 3, texto: 'Barahona' }
+        ],
+        valor: 1
+      },
+      {
+        nombre: 'condicionVisual',
+        etiqueta: 'Condición Visual',
+        tipo: 'select',
+        opciones: [
+          { valor: 1, texto: 'Baja Visión' },
+          { valor: 2, texto: 'Ceguera Congénita' },
+          { valor: 3, texto: 'Ceguera Adquirida' }
+        ],
+        valor: 1
+      }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar('/monitor/operaciones/beneficiarios', {
+        nombres: datos.nombres.trim(),
+        apellidos: datos.apellidos.trim(),
+        cedula: datos.cedula.trim(),
+        telefono: datos.telefono.trim(),
+        sedeAsignada: Number(datos.sedeAsignada),
+        condicionVisual: Number(datos.condicionVisual)
+      });
+    }
+  });
 }
+
 function editarBeneficiario(b) {
-  const nombres = prompt('Nombres:', b.nombres); if (!nombres) return;
-  const apellidos = prompt('Apellidos:', b.apellidos); if (!apellidos) return;
-  const cedula = prompt('Cédula:', b.cedula) || '';
-  const telefono = prompt('Teléfono:', b.telefono) || '';
-  enviar(`/monitor/operaciones/beneficiarios/${b.id}`, { nombres, apellidos, cedula, telefono }, 'PUT');
+  abrirModal({
+    titulo: `Editar Beneficiario: ${b.nombres} ${b.apellidos}`,
+    botonTexto: 'Guardar Cambios',
+    campos: [
+      { nombre: 'nombres', etiqueta: 'Nombres', valor: b.nombres, requerido: true },
+      { nombre: 'apellidos', etiqueta: 'Apellidos', valor: b.apellidos, requerido: true },
+      { nombre: 'cedula', etiqueta: 'Cédula', valor: b.cedula || '' },
+      { nombre: 'telefono', etiqueta: 'Teléfono', valor: b.telefono || '' }
+    ],
+    onGuardar: async (datos) => {
+      return await enviar(`/monitor/operaciones/beneficiarios/${b.id}`, {
+        nombres: datos.nombres.trim(),
+        apellidos: datos.apellidos.trim(),
+        cedula: datos.cedula.trim(),
+        telefono: datos.telefono.trim()
+      }, 'PUT');
+    }
+  });
 }
+
 function eliminarBeneficiario(id, nombre) {
   if (confirm(`¿Eliminar permanentemente a "${nombre}"? Esta acción no se puede deshacer.`)) {
     enviar(`/monitor/operaciones/beneficiarios/${id}`, undefined, 'DELETE');

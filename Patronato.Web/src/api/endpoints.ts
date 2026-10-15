@@ -114,6 +114,8 @@ export interface CrearCitaPayload {
 }
 // Pública: cualquier visitante la usa sin haber iniciado sesión (ver CitasController.PostCita).
 export const crearSolicitudCita = (payload: CrearCitaPayload) => api.post<SolicitudCita>("/api/Citas", payload);
+export const consultarSolicitudes = (termino: string) =>
+  api.get<SolicitudCita[]>(`/api/Citas/consultar?termino=${encodeURIComponent(termino)}`);
 
 // Estas requieren sesión de Recepción/Admin/especialista (ver CitasController).
 export const getCitas = () => api.get<SolicitudCita[]>("/api/Citas");

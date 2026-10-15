@@ -17,8 +17,24 @@ namespace Patronato.Core.Data
         // que no existía; no agrega tablas ni columnas a una base ya creada. Por eso,
         // igual que ya se hacía para Logs/OrdenesPedidoCaja/SolicitudesCita, cada tabla
         // o columna nueva se "parcha" aquí con SQL crudo idempotente.
+        private static bool TablaExiste(ApplicationDbContext context, string tabla)
+        {
+            var connection = context.Database.GetDbConnection();
+            if (connection.State != ConnectionState.Open) connection.Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@t;";
+            var p = cmd.CreateParameter();
+            p.ParameterName = "@t";
+            p.Value = tabla;
+            cmd.Parameters.Add(p);
+            var count = Convert.ToInt64(cmd.ExecuteScalar());
+            return count > 0;
+        }
+
         private static bool ColumnaExiste(ApplicationDbContext context, string tabla, string columna)
         {
+            if (!TablaExiste(context, tabla)) return false;
+
             var connection = context.Database.GetDbConnection();
             if (connection.State != ConnectionState.Open) connection.Open();
             using var cmd = connection.CreateCommand();
@@ -34,7 +50,7 @@ namespace Patronato.Core.Data
 
         private static void EnsureColumn(ApplicationDbContext context, string tabla, string columna, string definicionSql)
         {
-            if (!ColumnaExiste(context, tabla, columna))
+            if (TablaExiste(context, tabla) && !ColumnaExiste(context, tabla, columna))
             {
                 // tabla/columna/definicionSql son siempre literales fijos del propio código
                 // (nunca entrada del usuario), así que la concatenación aquí es segura.
@@ -636,7 +652,7 @@ namespace Patronato.Core.Data
 
             var rolesPorNombre = context.CoreRoles.ToDictionary(r => r.Nombre, r => r.Id);
 
-            void SembrarSiNoExiste(string nombreUsuario, string nombreCompleto, string correo, string rol)
+            void SembrarSiNoExiste(string nombreUsuario, string nombreCompleto, string correo, string rol, string claveInicial = "Temporal#2026")
             {
                 if (context.Usuarios.Any(u => u.NombreUsuario == nombreUsuario)) return;
 
@@ -645,16 +661,17 @@ namespace Patronato.Core.Data
                     NombreCompleto = nombreCompleto,
                     NombreUsuario = nombreUsuario,
                     Correo = correo,
-                    PasswordHash = hasher.HashPassword(default!, "Temporal#2026"),
+                    PasswordHash = hasher.HashPassword(default!, claveInicial),
                     RoleId = rolesPorNombre[rol],
                     SucursalId = sucursalCentral.Id,
                     EstadoCuenta = EstadoCuentaCore.Activo,
-                    DebeCambiarPassword = true
+                    DebeCambiarPassword = false
                 });
             }
 
             SembrarSiNoExiste("admin_operativo", "Marisol Objío", "operaciones@patronatociegos.org.do", PermisosCore.RolAdminOperativo);
             SembrarSiNoExiste("auditor", "Héctor Paulino", "auditoria@patronatociegos.org.do", PermisosCore.RolAuditor);
+            SembrarSiNoExiste("auditor2", "Segundo Auditor", "auditor2@patronatociegos.org.do", PermisosCore.RolAuditor, "AuditorClave123");
             SembrarSiNoExiste("logistica", "Yoel Castillo", "logistica@patronatociegos.org.do", PermisosCore.RolOperadorLogistico);
 
             context.SaveChanges();

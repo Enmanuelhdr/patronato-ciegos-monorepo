@@ -1,0 +1,25 @@
+[
+  {
+    "Name": "Iniciar Todo (Core + Gateway + Web + Caja)",
+    "Projects": [
+      {
+        "Path": "Patronato.Core\\Patronato.Core.csproj",
+        "Action": "Start",
+        "DebugTarget": "Patronato.Core"
+      },
+      {
+        "Path": "Patronato.Gateway\\Patronato.Gateway.csproj",
+        "Action": "Start",
+        "DebugTarget": "Patronato.Gateway"
+      },
+      {
+        "Path": "Patronato.Web\\Patronato.Web.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "Patronato.Caja\\Patronato.Caja.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

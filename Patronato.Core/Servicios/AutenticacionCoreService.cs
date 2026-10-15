@@ -22,7 +22,7 @@ namespace Patronato.Core.Servicios
     // esa lógica no viva duplicada (y posiblemente diverja) en dos sitios.
     public static class AutenticacionCoreService
     {
-        private static readonly TimeSpan DuracionBloqueo = TimeSpan.FromMinutes(15);
+        private static readonly TimeSpan DuracionBloqueo = TimeSpan.FromSeconds(30);
         private const int IntentosMaximos = 5;
 
         public static async Task<ResultadoLogin> IntentarLogin(ApplicationDbContext context, IPasswordHasher<Usuario> hasher, string nombreUsuario, string password)
@@ -37,11 +37,11 @@ namespace Patronato.Core.Servicios
 
             if (usuario.BloqueadoHasta.HasValue && usuario.BloqueadoHasta.Value > DateTime.UtcNow)
             {
-                var minutosRestantes = Math.Ceiling((usuario.BloqueadoHasta.Value - DateTime.UtcNow).TotalMinutes);
+                var segundosRestantes = Math.Ceiling((usuario.BloqueadoHasta.Value - DateTime.UtcNow).TotalSeconds);
                 return new ResultadoLogin
                 {
                     Exito = false,
-                    Error = $"Cuenta bloqueada temporalmente por intentos fallidos. Intente de nuevo en {minutosRestantes} minuto(s).",
+                    Error = $"Cuenta bloqueada temporalmente por intentos fallidos. Intente de nuevo en {segundosRestantes} segundo(s).",
                     StatusCodeError = 403,
                 };
             }

@@ -83,4 +83,6 @@ app.MapControllers();
 app.MapFallback("/api/{**path}", async (HttpContext context, ReverseProxyService proxy) =>
     await proxy.ProxyAsync(context));
 
+app.MapGet("/", () => Results.Redirect("/swagger"));
+
 app.Run();

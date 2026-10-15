@@ -43,12 +43,25 @@ public class ReverseProxyService
             : "Web";
         proxyRequest.Headers.Add("X-Origen", origen);
 
-        using var coreResponse = await _httpClient.SendAsync(
-            proxyRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+        try
+        {
+            using var coreResponse = await _httpClient.SendAsync(
+                proxyRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
 
-        context.Response.StatusCode = (int)coreResponse.StatusCode;
-        context.Response.ContentType = coreResponse.Content.Headers.ContentType?.ToString() ?? "application/json";
+            context.Response.StatusCode = (int)coreResponse.StatusCode;
+            context.Response.ContentType = coreResponse.Content.Headers.ContentType?.ToString() ?? "application/json";
 
-        await coreResponse.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+            await coreResponse.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+        }
+        catch (HttpRequestException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                error = "El servicio Patronato.Core aún no está disponible en http://localhost:57141",
+                detalle = ex.Message
+            }));
+        }
     }
 }

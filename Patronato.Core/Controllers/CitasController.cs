@@ -56,6 +56,50 @@ namespace Patronato.Core.Controllers
             return CreatedAtAction(nameof(GetCitas), new { id = solicitud.Id }, solicitud);
         }
 
+        // 2b. GET: api/citas/consultar?termino=809... (Pública: el solicitante consulta sus citas por teléfono o código SOL-XXXXXX)
+        [HttpGet("consultar")]
+        [AllowAnonymous]
+        public async Task<ActionResult<IEnumerable<SolicitudCita>>> ConsultarSolicitudes([FromQuery] string? termino)
+        {
+            if (string.IsNullOrWhiteSpace(termino))
+                return BadRequest("Ingresa tu teléfono, correo o código de solicitud.");
+
+            var limpio = termino.Trim();
+            int idBuscado = 0;
+            if (limpio.StartsWith("SOL-", StringComparison.OrdinalIgnoreCase))
+            {
+                int.TryParse(limpio.Substring(4), out idBuscado);
+            }
+            else
+            {
+                int.TryParse(limpio, out idBuscado);
+            }
+
+            var soloNumeros = new string(limpio.Where(char.IsDigit).ToArray());
+
+            var query = _context.SolicitudesCita.AsQueryable();
+
+            if (idBuscado > 0)
+            {
+                query = query.Where(c => c.Id == idBuscado);
+            }
+            else if (!string.IsNullOrEmpty(soloNumeros) && soloNumeros.Length >= 4)
+            {
+                query = query.Where(c => c.Telefono.Contains(soloNumeros) || c.Telefono.Contains(limpio));
+            }
+            else
+            {
+                query = query.Where(c => c.Correo.ToLower() == limpio.ToLower() || c.NombreSolicitante.ToLower().Contains(limpio.ToLower()));
+            }
+
+            var citas = await query
+                .OrderByDescending(c => c.FechaSolicitud)
+                .Take(20)
+                .ToListAsync();
+
+            return Ok(citas);
+        }
+
         // 3. PUT: api/citas/5/confirmar (Recepción/especialista confirma fecha y hora con el solicitante)
         // Si el servicio pedido es Masaje TACTO, además crea la SesionMasajeTacto (sin facturar)
         // para que quede visible y cobrable en la Caja cuando el cliente llegue en persona —
