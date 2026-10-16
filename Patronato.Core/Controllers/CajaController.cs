@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Patronato.Core.Data;
@@ -10,13 +11,40 @@ namespace Patronato.Core.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize(Roles = "Administrador,Cajero")]
     public class CajaController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IPasswordHasher<Usuario> _hasher;
 
-        public CajaController(ApplicationDbContext context)
+        public CajaController(ApplicationDbContext context, IPasswordHasher<Usuario> hasher)
         {
             _context = context;
+            _hasher = hasher;
+        }
+
+        private async Task<TurnoCaja?> ObtenerTurnoActivoAsync(string? cajero = null, string? sucursal = null)
+        {
+            var query = _context.TurnosCaja.Where(t => t.Estado == "Abierto");
+            if (!string.IsNullOrWhiteSpace(cajero) && !cajero.Equals("Todos", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(t => t.Cajero.ToLower() == cajero.Trim().ToLower());
+            if (!string.IsNullOrWhiteSpace(sucursal))
+                query = query.Where(t => t.Sucursal.ToLower() == sucursal.Trim().ToLower());
+
+            return await query.OrderByDescending(t => t.FechaHoraApertura).FirstOrDefaultAsync()
+                ?? await _context.TurnosCaja.Where(t => t.Estado == "Abierto").OrderByDescending(t => t.FechaHoraApertura).FirstOrDefaultAsync();
+        }
+
+        private string? ObtenerStan() =>
+            Request.Headers["X-Stan"].FirstOrDefault() ?? Request.Headers["X-Idempotency-Key"].FirstOrDefault();
+
+        private async Task<TransaccionCaja?> BuscarTransaccionExistenteAsync(string? stan)
+        {
+            if (string.IsNullOrWhiteSpace(stan)) return null;
+            var hoy = DateTime.Today;
+            var mañana = hoy.AddDays(1);
+            return await _context.TransaccionesCaja
+                .FirstOrDefaultAsync(t => (t.Stan == stan || t.IdempotencyKey == stan) && t.FechaHora >= hoy && t.FechaHora < mañana);
         }
 
         // ==========================================
@@ -25,6 +53,7 @@ namespace Patronato.Core.Controllers
 
         // GET: api/caja/masajes-pendientes
         [HttpGet("masajes-pendientes")]
+        [Authorize(Roles = "Administrador,Cajero,Recepcionista")]
         public async Task<IActionResult> GetMasajesPendientes()
         {
             var pendientes = await _context.SesionesMasaje
@@ -37,6 +66,7 @@ namespace Patronato.Core.Controllers
 
         // GET: api/caja/consultas-pendientes (las cubiertas por ARS no requieren cobro en efectivo)
         [HttpGet("consultas-pendientes")]
+        [Authorize(Roles = "Administrador,Cajero,Recepcionista")]
         public async Task<IActionResult> GetConsultasPendientes()
         {
             var pendientes = await _context.ConsultasOftalmologicas
@@ -50,6 +80,7 @@ namespace Patronato.Core.Controllers
 
         // GET: api/caja/prestamos-activos
         [HttpGet("prestamos-activos")]
+        [Authorize(Roles = "Administrador,Cajero,Recepcionista")]
         public async Task<IActionResult> GetPrestamosActivos([FromQuery] string? filtro = null)
         {
             var query = _context.PrestamosEmprendimiento
@@ -73,13 +104,19 @@ namespace Patronato.Core.Controllers
 
         // GET: api/caja/transacciones
         [HttpGet("transacciones")]
-        public async Task<IActionResult> GetTransacciones([FromQuery] DateTime? fecha = null, [FromQuery] string? cajero = null)
+        [Authorize(Roles = "Administrador,Cajero")]
+        public async Task<IActionResult> GetTransacciones(
+            [FromQuery] DateTime? fecha = null,
+            [FromQuery] DateTime? fechaInicio = null,
+            [FromQuery] DateTime? fechaFin = null,
+            [FromQuery] string? cajero = null)
         {
-            var targetDate = (fecha ?? DateTime.Today).Date;
+            var start = (fechaInicio ?? fecha ?? DateTime.Today).Date;
+            var end = (fechaFin ?? fecha ?? DateTime.Today).Date.AddDays(1);
             var query = _context.TransaccionesCaja
-                .Where(t => t.FechaHora.Date == targetDate);
+                .Where(t => t.FechaHora >= start && t.FechaHora < end);
 
-            if (!string.IsNullOrWhiteSpace(cajero))
+            if (!string.IsNullOrWhiteSpace(cajero) && !cajero.Equals("Todos", StringComparison.OrdinalIgnoreCase))
             {
                 query = query.Where(t => t.Cajero.ToLower() == cajero.Trim().ToLower());
             }
@@ -88,37 +125,57 @@ namespace Patronato.Core.Controllers
             return Ok(list);
         }
 
-        // GET: api/caja/cuadre-caja (Arqueo de turno/día)
+        // GET: api/caja/cuadre-caja (Arqueo de turno/día o rango)
         [HttpGet("cuadre-caja")]
-        public async Task<IActionResult> GetCuadreCaja([FromQuery] DateTime? fecha = null, [FromQuery] string? cajero = null)
+        [Authorize(Roles = "Administrador,Cajero")]
+        public async Task<IActionResult> GetCuadreCaja(
+            [FromQuery] DateTime? fecha = null,
+            [FromQuery] DateTime? fechaInicio = null,
+            [FromQuery] DateTime? fechaFin = null,
+            [FromQuery] string? cajero = null)
         {
-            var targetDate = (fecha ?? DateTime.Today).Date;
+            var start = (fechaInicio ?? fecha ?? DateTime.Today).Date;
+            var end = (fechaFin ?? fecha ?? DateTime.Today).Date.AddDays(1);
             var query = _context.TransaccionesCaja
-                .Where(t => t.FechaHora.Date == targetDate);
+                .Where(t => t.FechaHora >= start && t.FechaHora < end);
 
-            if (!string.IsNullOrWhiteSpace(cajero))
+            if (!string.IsNullOrWhiteSpace(cajero) && !cajero.Equals("Todos", StringComparison.OrdinalIgnoreCase))
             {
                 query = query.Where(t => t.Cajero.ToLower() == cajero.Trim().ToLower());
             }
 
             var transacciones = await query.ToListAsync();
+            var validas = transacciones.Where(t => !t.EsAnulada).ToList();
+            var anuladas = transacciones.Where(t => t.EsAnulada).ToList();
 
-            var totalGeneral = transacciones.Sum(t => t.MontoTotal);
-            var totalEfectivo = transacciones.Where(t => t.MetodoPago == "Efectivo").Sum(t => t.MontoTotal);
-            var totalTarjeta = transacciones.Where(t => t.MetodoPago == "Tarjeta").Sum(t => t.MontoTotal);
-            var totalTransferencia = transacciones.Where(t => t.MetodoPago == "Transferencia").Sum(t => t.MontoTotal);
+            var totalGeneral = validas.Sum(t => t.MontoTotal);
+            var totalEfectivo = validas.Where(t => t.MetodoPago == "Efectivo").Sum(t => t.MontoTotal);
+            var totalTarjeta = validas.Where(t => t.MetodoPago == "Tarjeta").Sum(t => t.MontoTotal);
+            var totalTransferencia = validas.Where(t => t.MetodoPago == "Transferencia").Sum(t => t.MontoTotal);
 
-            var totalVentas = transacciones.Where(t => t.TipoTransaccion == "VentaProductos").Sum(t => t.MontoTotal);
-            var totalMasajes = transacciones.Where(t => t.TipoTransaccion == "MasajeTacto").Sum(t => t.MontoTotal);
-            var totalPrestamos = transacciones.Where(t => t.TipoTransaccion == "AbonoPrestamo").Sum(t => t.MontoTotal);
-            var totalDonaciones = transacciones.Where(t => t.TipoTransaccion == "Donacion").Sum(t => t.MontoTotal);
-            var totalConsultas = transacciones.Where(t => t.TipoTransaccion == "ConsultaOftalmologica").Sum(t => t.MontoTotal);
+            var totalVentas = validas.Where(t => t.TipoTransaccion == "VentaProductos").Sum(t => t.MontoTotal);
+            var totalMasajes = validas.Where(t => t.TipoTransaccion == "MasajeTacto").Sum(t => t.MontoTotal);
+            var totalPrestamos = validas.Where(t => t.TipoTransaccion == "AbonoPrestamo").Sum(t => t.MontoTotal);
+            var totalDonaciones = validas.Where(t => t.TipoTransaccion == "Donacion").Sum(t => t.MontoTotal);
+            var totalConsultas = validas.Where(t => t.TipoTransaccion == "ConsultaOftalmologica").Sum(t => t.MontoTotal);
+
+            var turnoActivo = await ObtenerTurnoActivoAsync(cajero);
+            var fondoInicial = turnoActivo?.FondoInicial ?? 0m;
+            var efectivoEsperadoEnCaja = fondoInicial + totalEfectivo;
 
             return Ok(new
             {
-                fecha = targetDate.ToString("yyyy-MM-dd"),
+                fecha = start.ToString("yyyy-MM-dd"),
+                fechaInicio = start.ToString("yyyy-MM-dd"),
+                fechaFin = (fechaFin ?? fecha ?? DateTime.Today).Date.ToString("yyyy-MM-dd"),
                 cajero = cajero ?? "Todos",
-                cantidadTransacciones = transacciones.Count,
+                tieneTurnoActivo = turnoActivo != null,
+                turnoId = turnoActivo?.Id,
+                fondoInicial,
+                efectivoEsperadoEnCaja,
+                cantidadTransacciones = validas.Count,
+                cantidadAnuladas = anuladas.Count,
+                totalAnulado = anuladas.Sum(t => t.MontoTotal),
                 totalGeneral,
                 porMetodo = new
                 {
@@ -151,6 +208,11 @@ namespace Patronato.Core.Controllers
             [FromQuery] string cajero = "Caja Principal",
             [FromQuery] string sucursal = "Sede Central")
         {
+            var stan = ObtenerStan();
+            var existente = await BuscarTransaccionExistenteAsync(stan);
+            if (existente != null)
+                return Ok(new { mensaje = "Transacción ya procesada previamente (idempotente).", monto = existente.MontoTotal, recibo = existente, yaProcesada = true });
+
             var sesion = await _context.SesionesMasaje.FindAsync(id);
             if (sesion == null)
                 return NotFound("Sesión de masaje no encontrada.");
@@ -179,7 +241,10 @@ namespace Patronato.Core.Controllers
                 ClienteOBeneficiario = sesion.NombreCliente,
                 IdentificacionCliente = sesion.TelefonoCliente,
                 DetalleLineas = $"1x Sesión de masaje terapéutico TACTO ({sesion.DuracionMinutos} mins) - RD$ {sesion.PrecioTarifa:N2}",
-                ReferenciaId = sesion.Id
+                ReferenciaId = sesion.Id,
+                Stan = stan,
+                IdempotencyKey = stan,
+                TurnoId = (await ObtenerTurnoActivoAsync(cajero, sucursal))?.Id
             };
 
             _context.TransaccionesCaja.Add(transaccion);
@@ -202,6 +267,11 @@ namespace Patronato.Core.Controllers
             [FromQuery] string cajero = "Caja Principal",
             [FromQuery] string sucursal = "Sede Central")
         {
+            var stan = ObtenerStan();
+            var existente = await BuscarTransaccionExistenteAsync(stan);
+            if (existente != null)
+                return Ok(new { mensaje = "Transacción ya procesada previamente (idempotente).", monto = existente.MontoTotal, recibo = existente, yaProcesada = true });
+
             var consulta = await _context.ConsultasOftalmologicas
                 .Include(c => c.Beneficiario)
                 .FirstOrDefaultAsync(c => c.Id == id);
@@ -240,7 +310,10 @@ namespace Patronato.Core.Controllers
                 ClienteOBeneficiario = nombreBeneficiario,
                 IdentificacionCliente = consulta.Beneficiario?.Cedula ?? string.Empty,
                 DetalleLineas = $"1x Consulta Oftalmológica - Dr(a). {consulta.Oftalmologo} - RD$ {consulta.TarifaConsulta:N2}",
-                ReferenciaId = consulta.Id
+                ReferenciaId = consulta.Id,
+                Stan = stan,
+                IdempotencyKey = stan,
+                TurnoId = (await ObtenerTurnoActivoAsync(cajero, sucursal))?.Id
             };
 
             _context.TransaccionesCaja.Add(transaccion);
@@ -264,6 +337,11 @@ namespace Patronato.Core.Controllers
             [FromQuery] string cajero = "Caja Principal",
             [FromQuery] string sucursal = "Sede Central")
         {
+            var stan = ObtenerStan();
+            var existente = await BuscarTransaccionExistenteAsync(stan);
+            if (existente != null)
+                return Ok(new { mensaje = "Transacción ya procesada previamente (idempotente).", nuevoSaldo = 0m, estado = "Activo", recibo = existente, yaProcesada = true });
+
             var prestamo = await _context.PrestamosEmprendimiento
                 .Include(p => p.Beneficiario)
                 .FirstOrDefaultAsync(p => p.Id == prestamoId);
@@ -299,7 +377,10 @@ namespace Patronato.Core.Controllers
                     ClienteOBeneficiario = nombreBeneficiario,
                     IdentificacionCliente = prestamo.Beneficiario?.Cedula ?? string.Empty,
                     DetalleLineas = $"Abono a capital. Saldo anterior: RD$ {saldoAnterior:N2} | Saldo restante: RD$ {prestamo.SaldoPendiente:N2}",
-                    ReferenciaId = prestamo.Id
+                    ReferenciaId = prestamo.Id,
+                    Stan = stan,
+                    IdempotencyKey = stan,
+                    TurnoId = (await ObtenerTurnoActivoAsync(cajero, sucursal))?.Id
                 };
 
                 _context.TransaccionesCaja.Add(transaccion);
@@ -330,6 +411,11 @@ namespace Patronato.Core.Controllers
             [FromQuery] string sucursal = "Sede Central",
             [FromQuery] string? cliente = null)
         {
+            var stan = ObtenerStan();
+            var existente = await BuscarTransaccionExistenteAsync(stan);
+            if (existente != null)
+                return Ok(new { mensaje = "Transacción ya procesada previamente (idempotente).", totalCobrado = existente.MontoTotal, stockRestante = 0, recibo = existente, yaProcesada = true });
+
             var producto = await _context.ProductosArticulos.FindAsync(productoId);
             if (producto == null)
                 return NotFound("Artículo no encontrado en el inventario.");
@@ -357,7 +443,10 @@ namespace Patronato.Core.Controllers
                     Sucursal = sucursal,
                     ClienteOBeneficiario = cliente ?? "Cliente de Contado",
                     DetalleLineas = $"{cantidad}x [{producto.Codigo}] {producto.Nombre} @ RD$ {producto.PrecioVenta:N2} = RD$ {totalVenta:N2}",
-                    ReferenciaId = producto.Id
+                    ReferenciaId = producto.Id,
+                    Stan = stan,
+                    IdempotencyKey = stan,
+                    TurnoId = (await ObtenerTurnoActivoAsync(cajero, sucursal))?.Id
                 };
 
                 _context.TransaccionesCaja.Add(transaccion);
@@ -384,6 +473,11 @@ namespace Patronato.Core.Controllers
             if (request == null || request.Items == null || !request.Items.Any())
                 return BadRequest("El carrito de compras está vacío.");
 
+            var stan = ObtenerStan();
+            var existente = await BuscarTransaccionExistenteAsync(stan);
+            if (existente != null)
+                return Ok(new { mensaje = "Transacción ya procesada previamente (idempotente).", totalCobrado = existente.MontoTotal, recibo = existente, yaProcesada = true });
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -400,7 +494,7 @@ namespace Patronato.Core.Controllers
                     decimal subtotal = producto.PrecioVenta * item.Cantidad;
                     totalVenta += subtotal;
 
-                    lineasDetalle.Add($"{item.Cantidad}x {producto.Nombre} (RD$ {producto.PrecioVenta:N2}) = RD$ {subtotal:N2}");
+                    lineasDetalle.Add($"{item.Cantidad}x [{producto.Codigo}] {producto.Nombre} (RD$ {producto.PrecioVenta:N2}) = RD$ {subtotal:N2}");
                 }
 
                 bool esEfectivo = string.Equals(request.MetodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase);
@@ -420,7 +514,11 @@ namespace Patronato.Core.Controllers
                     Cajero = request.Cajero,
                     Sucursal = request.Sucursal,
                     ClienteOBeneficiario = request.Cliente ?? "Cliente de Contado",
-                    DetalleLineas = string.Join("\n", lineasDetalle)
+                    DetalleLineas = string.Join("\n", lineasDetalle),
+                    ReferenciaId = request.OrdenId,
+                    Stan = stan,
+                    IdempotencyKey = stan,
+                    TurnoId = (await ObtenerTurnoActivoAsync(request.Cajero, request.Sucursal))?.Id
                 };
 
                 _context.TransaccionesCaja.Add(transaccionCaja);
@@ -458,6 +556,11 @@ namespace Patronato.Core.Controllers
             [FromQuery] string cajero = "Caja Principal",
             [FromQuery] string sucursal = "Sede Central")
         {
+            var stan = ObtenerStan();
+            var existente = await BuscarTransaccionExistenteAsync(stan);
+            if (existente != null)
+                return Ok(new { mensaje = "Transacción ya procesada previamente (idempotente).", reciboId = existente.ReferenciaId ?? 0, recibo = existente, yaProcesada = true });
+
             donacion.EstaRegistradaEnCaja = true;
             _context.Donaciones.Add(donacion);
             await _context.SaveChangesAsync();
@@ -477,7 +580,10 @@ namespace Patronato.Core.Controllers
                 ClienteOBeneficiario = donacion.Donante,
                 IdentificacionCliente = donacion.RncCedula,
                 DetalleLineas = $"Donación recibida para apoyo de programas institucionales. Requiere NCF: {(donacion.RequiereComprobanteFiscal ? "SÍ" : "NO")}",
-                ReferenciaId = donacion.Id
+                ReferenciaId = donacion.Id,
+                Stan = stan,
+                IdempotencyKey = stan,
+                TurnoId = (await ObtenerTurnoActivoAsync(cajero, sucursal))?.Id
             };
 
             _context.TransaccionesCaja.Add(transaccion);
@@ -529,6 +635,7 @@ namespace Patronato.Core.Controllers
 
         // GET: api/caja/ordenes-pendientes
         [HttpGet("ordenes-pendientes")]
+        [Authorize(Roles = "Administrador,Cajero,Recepcionista")]
         public async Task<IActionResult> GetOrdenesPendientes()
         {
             var ordenes = await _context.OrdenesPedidoCaja
@@ -537,6 +644,383 @@ namespace Patronato.Core.Controllers
                 .ToListAsync();
 
             return Ok(ordenes);
+        }
+
+        // ==========================================
+        // 4. GESTIÓN DE TURNOS DE CAJA (APERTURA Y CIERRE)
+        // ==========================================
+
+        // GET: api/caja/turno-activo
+        [HttpGet("turno-activo")]
+        public async Task<IActionResult> GetTurnoActivo([FromQuery] string? cajero = null, [FromQuery] string? sucursal = null)
+        {
+            var turno = await ObtenerTurnoActivoAsync(cajero, sucursal);
+            if (turno == null)
+            {
+                return Ok(new
+                {
+                    tieneTurnoActivo = false,
+                    mensaje = "No hay ningún turno de caja abierto actualmente para este cajero/sucursal."
+                });
+            }
+
+            var transacciones = await _context.TransaccionesCaja
+                .Where(t => (t.TurnoId == turno.Id || (t.TurnoId == null && t.FechaHora >= turno.FechaHoraApertura)) && !t.EsAnulada)
+                .ToListAsync();
+
+            decimal totalEfectivo = transacciones.Where(t => t.MetodoPago == "Efectivo").Sum(t => t.MontoTotal);
+            decimal totalTarjeta = transacciones.Where(t => t.MetodoPago == "Tarjeta").Sum(t => t.MontoTotal);
+            decimal totalTransferencia = transacciones.Where(t => t.MetodoPago == "Transferencia").Sum(t => t.MontoTotal);
+            decimal totalGeneral = transacciones.Sum(t => t.MontoTotal);
+            decimal efectivoEsperado = turno.FondoInicial + totalEfectivo;
+
+            var anuladas = await _context.TransaccionesCaja
+                .Where(t => (t.TurnoId == turno.Id || (t.TurnoId == null && t.FechaHora >= turno.FechaHoraApertura)) && t.EsAnulada)
+                .CountAsync();
+
+            return Ok(new
+            {
+                tieneTurnoActivo = true,
+                turno = new
+                {
+                    turno.Id,
+                    turno.Cajero,
+                    turno.Sucursal,
+                    turno.FechaHoraApertura,
+                    turno.FondoInicial,
+                    turno.Estado,
+                    turno.ObservacionesApertura,
+                    totalVentasEfectivo = totalEfectivo,
+                    totalVentasTarjeta = totalTarjeta,
+                    totalVentasTransferencia = totalTransferencia,
+                    totalGeneralVentas = totalGeneral,
+                    efectivoEsperadoEnCaja = efectivoEsperado,
+                    cantidadTransacciones = transacciones.Count,
+                    cantidadAnuladas = anuladas
+                }
+            });
+        }
+
+        // POST: api/caja/abrir-turno
+        [HttpPost("abrir-turno")]
+        public async Task<IActionResult> AbrirTurno([FromBody] AbrirTurnoRequest request)
+        {
+            if (request == null)
+                return BadRequest("Datos de apertura de turno requeridos.");
+
+            if (request.FondoInicial < 0)
+                return BadRequest("El fondo inicial no puede ser negativo.");
+
+            var cajero = string.IsNullOrWhiteSpace(request.Cajero) ? (User.Identity?.Name ?? "Caja Principal") : request.Cajero.Trim();
+            var sucursal = string.IsNullOrWhiteSpace(request.Sucursal) ? "Sede Central" : request.Sucursal.Trim();
+
+            var existente = await _context.TurnosCaja
+                .FirstOrDefaultAsync(t => t.Estado == "Abierto" && t.Cajero.ToLower() == cajero.ToLower());
+
+            if (existente != null)
+            {
+                return BadRequest($"Ya existe un turno abierto para {cajero} (Turno #{existente.Id}, iniciado {existente.FechaHoraApertura:hh:mm tt}). Debe cerrarlo antes de iniciar otro.");
+            }
+
+            var nuevoTurno = new TurnoCaja
+            {
+                Cajero = cajero,
+                Sucursal = sucursal,
+                FechaHoraApertura = DateTime.Now,
+                FondoInicial = request.FondoInicial,
+                Estado = "Abierto",
+                ObservacionesApertura = request.Observaciones
+            };
+
+            _context.TurnosCaja.Add(nuevoTurno);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = $"Turno #{nuevoTurno.Id} abierto exitosamente con fondo inicial de RD$ {nuevoTurno.FondoInicial:N2}.",
+                turno = nuevoTurno
+            });
+        }
+
+        // POST: api/caja/cerrar-turno
+        [HttpPost("cerrar-turno")]
+        public async Task<IActionResult> CerrarTurno([FromBody] CerrarTurnoRequest request)
+        {
+            if (request == null)
+                return BadRequest("Datos de cierre de turno requeridos.");
+
+            TurnoCaja? turno = null;
+            if (request.TurnoId > 0)
+            {
+                turno = await _context.TurnosCaja.FindAsync(request.TurnoId);
+            }
+
+            // Si no se encontró por ID directo (o vino un ID de contingencia negativo), buscar el turno actualmente abierto
+            if (turno == null)
+            {
+                turno = await _context.TurnosCaja
+                    .Where(t => t.Estado == "Abierto")
+                    .OrderByDescending(t => t.FechaHoraApertura)
+                    .FirstOrDefaultAsync();
+            }
+
+            if (turno == null)
+            {
+                // Si no hay ningún turno abierto, verificar si el más reciente ya se encuentra cerrado
+                var ultimo = await _context.TurnosCaja
+                    .OrderByDescending(t => t.FechaHoraCierre ?? t.FechaHoraApertura)
+                    .FirstOrDefaultAsync();
+
+                if (ultimo != null && ultimo.Estado == "Cerrado")
+                {
+                    return Ok(new
+                    {
+                        mensaje = $"El turno #{ultimo.Id} ya fue cerrado previamente.",
+                        turno = ultimo,
+                        estadoCuadre = ultimo.Diferencia == 0 ? "CUADRE EXACTO" : (ultimo.Diferencia > 0 ? $"SOBRANTE DE RD$ {ultimo.Diferencia:N2}" : $"FALTANTE DE RD$ {Math.Abs(ultimo.Diferencia):N2}"),
+                        montoEntregadoBoveda = ultimo.MontoEntregadoBoveda,
+                        fondoRemanenteCaja = ultimo.FondoRemanenteCaja,
+                        destinoFondos = ultimo.DestinoFondos,
+                        cantidadTransacciones = 0
+                    });
+                }
+
+                return NotFound("No se encontró ningún turno activo o abierto para cerrar.");
+            }
+
+            if (turno.Estado == "Cerrado")
+                return BadRequest($"El turno #{turno.Id} ya fue cerrado previamente el {turno.FechaHoraCierre:dd/MM/yyyy hh:mm tt}.");
+
+            var transacciones = await _context.TransaccionesCaja
+                .Where(t => (t.TurnoId == turno.Id || (t.TurnoId == null && t.FechaHora >= turno.FechaHoraApertura)) && !t.EsAnulada)
+                .ToListAsync();
+
+            foreach (var t in transacciones.Where(t => t.TurnoId == null))
+            {
+                t.TurnoId = turno.Id;
+            }
+
+            decimal totalEfectivo = transacciones.Where(t => t.MetodoPago == "Efectivo").Sum(t => t.MontoTotal);
+            decimal totalTarjeta = transacciones.Where(t => t.MetodoPago == "Tarjeta").Sum(t => t.MontoTotal);
+            decimal totalTransferencia = transacciones.Where(t => t.MetodoPago == "Transferencia").Sum(t => t.MontoTotal);
+            decimal totalVentas = transacciones.Sum(t => t.MontoTotal);
+            decimal efectivoEsperado = turno.FondoInicial + totalEfectivo;
+            decimal diferencia = request.EfectivoContado - efectivoEsperado;
+
+            turno.Estado = "Cerrado";
+            turno.FechaHoraCierre = DateTime.Now;
+            turno.TotalVentasEfectivo = totalEfectivo;
+            turno.TotalVentasTarjeta = totalTarjeta;
+            turno.TotalVentasTransferencia = totalTransferencia;
+            turno.TotalGeneralVentas = totalVentas;
+            turno.EfectivoEsperado = efectivoEsperado;
+            turno.EfectivoContado = request.EfectivoContado;
+            turno.Diferencia = diferencia;
+            turno.DesgloseDenominacionesJson = request.DesgloseDenominacionesJson;
+            turno.ObservacionesCierre = !string.IsNullOrWhiteSpace(request.ObservacionesCierre) ? request.ObservacionesCierre : request.Observaciones;
+
+            // Manejo de destino de fondos (Retiro a Bóveda vs Fondo en Gaveta)
+            string destino = string.IsNullOrWhiteSpace(request.DestinoFondos) ? "RetiroTotalBoveda" : request.DestinoFondos;
+            decimal remanenteCaja = 0;
+            decimal entregadoBoveda = request.EfectivoContado;
+
+            if (destino == "DejarFondoEnCaja")
+            {
+                remanenteCaja = request.FondoRemanenteCaja ?? Math.Min(turno.FondoInicial, request.EfectivoContado);
+                entregadoBoveda = Math.Max(0, request.EfectivoContado - remanenteCaja);
+            }
+            else if (destino == "Personalizado")
+            {
+                entregadoBoveda = request.MontoEntregadoBoveda ?? request.EfectivoContado;
+                remanenteCaja = request.FondoRemanenteCaja ?? Math.Max(0, request.EfectivoContado - entregadoBoveda);
+            }
+
+            turno.DestinoFondos = destino;
+            turno.MontoEntregadoBoveda = entregadoBoveda;
+            turno.FondoRemanenteCaja = remanenteCaja;
+
+            await _context.SaveChangesAsync();
+
+            string estadoCuadre = diferencia switch
+            {
+                0 => "CUADRE EXACTO",
+                > 0 => $"SOBRANTE DE RD$ {diferencia:N2}",
+                < 0 => $"FALTANTE DE RD$ {Math.Abs(diferencia):N2}"
+            };
+
+            return Ok(new
+            {
+                mensaje = $"Turno #{turno.Id} cerrado exitosamente. Resultado: {estadoCuadre}. Entregado a Bóveda: RD$ {turno.MontoEntregadoBoveda:N2}, Remanente en Gaveta: RD$ {turno.FondoRemanenteCaja:N2}.",
+                turno,
+                estadoCuadre,
+                montoEntregadoBoveda = turno.MontoEntregadoBoveda,
+                fondoRemanenteCaja = turno.FondoRemanenteCaja,
+                destinoFondos = turno.DestinoFondos,
+                cantidadTransacciones = transacciones.Count
+            });
+        }
+
+        // ==========================================
+        // 5. ANULACIÓN DE TRANSACCIONES (SUPERVISOR)
+        // ==========================================
+
+        // POST: api/caja/anular-transaccion/5
+        [HttpPost("anular-transaccion/{id}")]
+        public async Task<IActionResult> AnularTransaccion(int id, [FromBody] AnularTransaccionRequest request)
+        {
+            if (request == null)
+                return BadRequest("Datos de anulación requeridos.");
+
+            if (string.IsNullOrWhiteSpace(request.SupervisorUsuario) || string.IsNullOrWhiteSpace(request.SupervisorPassword))
+                return BadRequest("Se requiere usuario y contraseña de supervisor/administrador para autorizar la anulación.");
+
+            if (string.IsNullOrWhiteSpace(request.Motivo) || request.Motivo.Trim().Length < 5)
+                return BadRequest("El motivo de anulación es obligatorio (mínimo 5 caracteres).");
+
+            var supervisor = await _context.Usuarios
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.NombreUsuario == request.SupervisorUsuario.Trim());
+
+            if (supervisor == null || supervisor.Role == null || supervisor.Role.Nombre != "Administrador")
+            {
+                return StatusCode(403, new { mensaje = "El usuario proporcionado no tiene rol de Administrador/Supervisor para autorizar anulaciones." });
+            }
+
+            var verif = _hasher.VerifyHashedPassword(supervisor, supervisor.PasswordHash, request.SupervisorPassword);
+            if (verif == PasswordVerificationResult.Failed)
+            {
+                return StatusCode(401, new { mensaje = "Contraseña de supervisor incorrecta." });
+            }
+
+            var transaccion = await _context.TransaccionesCaja.FindAsync(id);
+            if (transaccion == null)
+                return NotFound("Transacción no encontrada.");
+
+            if (transaccion.EsAnulada)
+                return BadRequest($"La transacción {transaccion.NumeroRecibo} ya fue anulada previamente por {transaccion.AnuladoPor} el {transaccion.FechaHoraAnulacion:dd/MM/yyyy hh:mm tt}.");
+
+            transaccion.EsAnulada = true;
+            transaccion.MotivoAnulacion = request.Motivo.Trim();
+            transaccion.FechaHoraAnulacion = DateTime.Now;
+            transaccion.AnuladoPor = $"{supervisor.NombreCompleto} ({supervisor.NombreUsuario})";
+
+            switch (transaccion.TipoTransaccion)
+            {
+                case "VentaProductos":
+                    if (!string.IsNullOrWhiteSpace(transaccion.DetalleLineas))
+                    {
+                        foreach (var linea in transaccion.DetalleLineas.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            var matchConCodigo = System.Text.RegularExpressions.Regex.Match(linea, @"(\d+)x\s+\[(.*?)\]");
+                            if (matchConCodigo.Success && int.TryParse(matchConCodigo.Groups[1].Value, out var cantCod))
+                            {
+                                var codigo = matchConCodigo.Groups[2].Value.Trim();
+                                var prod = await _context.ProductosArticulos.FirstOrDefaultAsync(p => p.Codigo == codigo);
+                                if (prod != null) prod.StockDisponible += cantCod;
+                            }
+                            else
+                            {
+                                var matchSinCodigo = System.Text.RegularExpressions.Regex.Match(linea, @"(\d+)x\s+(.*?)(?:\s+\(RD\$|\s+@|\z)");
+                                if (matchSinCodigo.Success && int.TryParse(matchSinCodigo.Groups[1].Value, out var cantNom))
+                                {
+                                    var nombre = matchSinCodigo.Groups[2].Value.Trim();
+                                    var prod = await _context.ProductosArticulos.FirstOrDefaultAsync(p => p.Nombre == nombre);
+                                    if (prod != null) prod.StockDisponible += cantNom;
+                                }
+                            }
+                        }
+                    }
+                    else if (transaccion.ReferenciaId.HasValue && transaccion.ReferenciaId.Value > 0)
+                    {
+                        var prod = await _context.ProductosArticulos.FindAsync(transaccion.ReferenciaId.Value);
+                        if (prod != null)
+                        {
+                            int cant = 1;
+                            var match = System.Text.RegularExpressions.Regex.Match(transaccion.Concepto ?? "", @"Venta de (\d+)x");
+                            if (match.Success && int.TryParse(match.Groups[1].Value, out var c)) cant = c;
+                            prod.StockDisponible += cant;
+                        }
+                    }
+
+                    if (transaccion.ReferenciaId.HasValue && transaccion.ReferenciaId.Value > 0)
+                    {
+                        var orden = await _context.OrdenesPedidoCaja.FindAsync(transaccion.ReferenciaId.Value);
+                        if (orden != null) orden.Estado = "Pendiente";
+                    }
+                    break;
+
+                case "MasajeTacto":
+                    if (transaccion.ReferenciaId.HasValue)
+                    {
+                        var sesion = await _context.SesionesMasaje.FindAsync(transaccion.ReferenciaId.Value);
+                        if (sesion != null) sesion.EstaFacturadoEnCaja = false;
+                    }
+                    break;
+
+                case "ConsultaOftalmologica":
+                    if (transaccion.ReferenciaId.HasValue)
+                    {
+                        var consulta = await _context.ConsultasOftalmologicas.FindAsync(transaccion.ReferenciaId.Value);
+                        if (consulta != null) consulta.EstaFacturadaEnCaja = false;
+                    }
+                    break;
+
+                case "AbonoPrestamo":
+                    if (transaccion.ReferenciaId.HasValue)
+                    {
+                        var prestamo = await _context.PrestamosEmprendimiento.FindAsync(transaccion.ReferenciaId.Value);
+                        if (prestamo != null)
+                        {
+                            prestamo.SaldoPendiente += transaccion.MontoTotal;
+                            if (prestamo.Estado == EstadoPrestamo.Pagado)
+                                prestamo.Estado = EstadoPrestamo.Activo;
+                        }
+                    }
+                    break;
+
+                case "Donacion":
+                    if (transaccion.ReferenciaId.HasValue)
+                    {
+                        var donacion = await _context.Donaciones.FindAsync(transaccion.ReferenciaId.Value);
+                        if (donacion != null) donacion.EstaRegistradaEnCaja = false;
+                    }
+                    break;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                mensaje = $"Transacción {transaccion.NumeroRecibo} anulada exitosamente por {transaccion.AnuladoPor}.",
+                recibo = transaccion
+            });
+        }
+
+        // POST: api/caja/sembrar-datos-masivos
+        [HttpPost("sembrar-datos-masivos")]
+        public IActionResult SembrarDatosMasivos()
+        {
+            var (agregados, detalle) = DbMassiveSeeder.SembrarDatosSiFaltan(_context);
+            return Ok(new
+            {
+                mensaje = agregados > 0 
+                    ? $"Se generaron {agregados} registros masivos reales exitosamente." 
+                    : "La base de datos ya cuenta con más de 350 registros poblados.",
+                nuevosRegistros = agregados,
+                detalle,
+                conteoActual = new
+                {
+                    productos = _context.ProductosArticulos.Count(),
+                    beneficiarios = _context.Beneficiarios.Count(),
+                    consultas = _context.ConsultasOftalmologicas.Count(),
+                    masajes = _context.SesionesMasaje.Count(),
+                    prestamos = _context.PrestamosEmprendimiento.Count(),
+                    donaciones = _context.Donaciones.Count(),
+                    rehabilitacion = _context.InscripcionesRehabilitacion.Count(),
+                    voluntarios = _context.Voluntarios.Count(),
+                    transacciones = _context.TransaccionesCaja.Count()
+                }
+            });
         }
 
         private static string GenerarNumeroRecibo(string prefijo)
@@ -597,5 +1081,32 @@ namespace Patronato.Core.Controllers
         public string Sucursal { get; set; } = "Sede Central";
         public string? Cliente { get; set; }
         public int? OrdenId { get; set; }
+    }
+
+    public class AbrirTurnoRequest
+    {
+        public string Cajero { get; set; } = "Caja Principal";
+        public string Sucursal { get; set; } = "Sede Central";
+        public decimal FondoInicial { get; set; }
+        public string? Observaciones { get; set; }
+    }
+
+    public class CerrarTurnoRequest
+    {
+        public int TurnoId { get; set; }
+        public decimal EfectivoContado { get; set; }
+        public string? DesgloseDenominacionesJson { get; set; }
+        public string? ObservacionesCierre { get; set; }
+        public string? Observaciones { get; set; }
+        public decimal? MontoEntregadoBoveda { get; set; }
+        public decimal? FondoRemanenteCaja { get; set; }
+        public string? DestinoFondos { get; set; }
+    }
+
+    public class AnularTransaccionRequest
+    {
+        public string SupervisorUsuario { get; set; } = string.Empty;
+        public string SupervisorPassword { get; set; } = string.Empty;
+        public string Motivo { get; set; } = string.Empty;
     }
 }

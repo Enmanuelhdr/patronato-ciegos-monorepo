@@ -1,19 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { crearSolicitudCita, consultarSolicitudes } from "../api/endpoints";
 import { ApiError } from "../api/client";
 import { EstadoCitaTexto, SedeTexto, TipoServicioCitaTexto, type SolicitudCita, type TipoServicioCita } from "../api/types";
+import { PublicNavbar } from "../components/PublicNavbar";
+import { PublicFooter } from "../components/PublicFooter";
 
 // Página pública: cualquier persona puede solicitar una cita y además consultar el
 // estado de sus solicitudes anteriores ingresando su teléfono o código de solicitud.
 const SERVICIOS_DISPONIBLES: TipoServicioCita[] = [3, 4];
+const FECHA_MINIMA_HOY = new Date().toISOString().slice(0, 10);
 
 export function AgendarCitaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState<"agendar" | "consultar">(
-    searchParams.get("tab") === "consultar" ? "consultar" : "agendar"
-  );
+  const tab: "agendar" | "consultar" = searchParams.get("tab") === "consultar" ? "consultar" : "agendar";
+  const setTab = (nuevoTab: "agendar" | "consultar") => {
+    if (nuevoTab === "consultar") {
+      setSearchParams({ tab: "consultar" });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   // Formulario de nueva solicitud
   const [form, setForm] = useState({
@@ -30,21 +38,24 @@ export function AgendarCitaPage() {
 
   // Búsqueda de solicitudes existentes
   const [terminoBusqueda, setTerminoBusqueda] = useState(searchParams.get("telefono") ?? "");
-  const [resultados, setResultados] = useState<SolicitudCita[] | null>(null);
-  const [buscando, setBuscando] = useState(false);
-  const [errorBusqueda, setErrorBusqueda] = useState<string | null>(null);
+  const [filtroActivo, setFiltroActivo] = useState(searchParams.get("telefono") ?? "");
 
-  useEffect(() => {
-    const pTab = searchParams.get("tab");
-    if (pTab === "consultar") {
-      setTab("consultar");
-      const tel = searchParams.get("telefono");
-      if (tel) {
-        setTerminoBusqueda(tel);
-        ejecutarBusqueda(tel);
-      }
-    }
-  }, [searchParams]);
+  const consultaQuery = useQuery({
+    queryKey: ["solicitudes-publicas", filtroActivo],
+    queryFn: () => consultarSolicitudes(filtroActivo),
+    enabled: tab === "consultar" && filtroActivo.trim().length > 0,
+  });
+
+  const resultados = filtroActivo.trim().length > 0 ? (consultaQuery.data ?? null) : null;
+  const buscando = consultaQuery.isFetching;
+  const errorBusqueda = consultaQuery.error
+    ? (consultaQuery.error instanceof ApiError ? consultaQuery.error.message : "Error al consultar las solicitudes. Verifica tu conexión.")
+    : null;
+
+  const ejecutarBusqueda = (termino: string) => {
+    if (!termino.trim()) return;
+    setFiltroActivo(termino.trim());
+  };
 
   const solicitar = useMutation({
     mutationFn: () =>
@@ -58,20 +69,6 @@ export function AgendarCitaPage() {
     },
     onError: (e) => setError(e instanceof ApiError ? e.message : "No se pudo enviar la solicitud. Intenta de nuevo."),
   });
-
-  const ejecutarBusqueda = async (termino: string) => {
-    if (!termino.trim()) return;
-    setBuscando(true);
-    setErrorBusqueda(null);
-    try {
-      const data = await consultarSolicitudes(termino);
-      setResultados(data);
-    } catch (e) {
-      setErrorBusqueda(e instanceof ApiError ? e.message : "Error al consultar las solicitudes. Verifica tu conexión.");
-    } finally {
-      setBuscando(false);
-    }
-  };
 
   const handleBuscar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,49 +89,60 @@ export function AgendarCitaPage() {
   };
 
   return (
-    <div className="landing">
-      <header className="landing-nav">
-        <Link to="/" className="landing-nav-marca">
-          <div className="sidebar-escudo">PNC</div>
-          <span>Patronato Nacional de Ciegos</span>
-        </Link>
-        <Link to="/" className="btn btn-secundario">← Volver al sitio</Link>
-      </header>
+    <div className="landing-moderna">
+      <PublicNavbar paginaActiva="citas" />
 
-      <section className="landing-seccion" style={{ maxWidth: 680, margin: "0 auto" }}>
-        <h2>Portal de Citas</h2>
-        <p className="landing-seccion-sub">
-          Solicita una nueva cita o consulta en tiempo real el estado de tus solicitudes enviadas.
-        </p>
-
-        {/* Pestañas de Navegación */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          <button
-            type="button"
-            className={`btn ${tab === "agendar" ? "btn-primario" : "btn-secundario"}`}
-            onClick={() => {
-              setTab("agendar");
-              setSearchParams({});
-            }}
-          >
-            📝 Solicitar nueva cita
-          </button>
-          <button
-            type="button"
-            className={`btn ${tab === "consultar" ? "btn-primario" : "btn-secundario"}`}
-            onClick={() => {
-              setTab("consultar");
-              setSearchParams({ tab: "consultar" });
-            }}
-          >
-            🔍 Consultar mis solicitudes
-          </button>
+      {/* Hero Dedicado de Citas */}
+      <section className="pagina-publica-hero">
+        <div className="pagina-publica-hero-inner">
+          <div className="breadcrumb-nav">
+            <Link to="/">Inicio</Link>
+            <span>/</span>
+            <span className="breadcrumb-actual">Portal de Citas y Turnos</span>
+          </div>
+          <span className="hero-pill-badge">📅 Atención Médica y Terapias Especializadas</span>
+          <h1 className="pagina-hero-titulo">
+            Portal de Citas y <span className="texto-destacado-verde">Consultas en Línea</span>
+          </h1>
+          <p className="pagina-hero-subtitulo">
+            Agenda tu cita para consultas oftalmológicas, terapias en el Centro de Masajes TACTO o capacitación en rehabilitación.
+            También puedes consultar el estado de tus solicitudes con tu número telefónico.
+          </p>
         </div>
+      </section>
+
+      <section className="seccion-citas-formulario">
+        <div className="citas-form-container">
+          {/* Pestañas de Navegación con Efectos de Luz */}
+          <div className="citas-tabs-bar">
+            <button
+              type="button"
+              className={`btn-cita-tab ${tab === "agendar" ? "activo" : ""}`}
+              onClick={() => {
+                setTab("agendar");
+                setSearchParams({});
+              }}
+            >
+              <span aria-hidden="true">📝 </span>
+              <span>Solicitar nueva cita</span>
+            </button>
+            <button
+              type="button"
+              className={`btn-cita-tab ${tab === "consultar" ? "activo" : ""}`}
+              onClick={() => {
+                setTab("consultar");
+                setSearchParams({ tab: "consultar" });
+              }}
+            >
+              <span aria-hidden="true">🔍 </span>
+              <span>Consultar mis solicitudes</span>
+            </button>
+          </div>
 
         {tab === "agendar" ? (
           solicitudCreada ? (
             <div className="panel">
-              <div className="alerta alerta-exito">
+              <div className="alerta alerta-exito" role="status" aria-live="polite">
                 ¡Solicitud enviada con éxito! Te contactaremos al teléfono {solicitudCreada.telefono} para confirmar.
               </div>
 
@@ -175,10 +183,12 @@ export function AgendarCitaPage() {
               </div>
 
               <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                <button className="btn btn-primario" onClick={() => window.print()}>
-                  🖨️ Imprimir comprobante
+                <button type="button" className="btn btn-primario" onClick={() => window.print()}>
+                  <span aria-hidden="true">🖨️ </span>
+                  <span>Imprimir comprobante</span>
                 </button>
                 <button
+                  type="button"
                   className="btn btn-exito"
                   onClick={() => {
                     setTerminoBusqueda(solicitudCreada.telefono);
@@ -186,25 +196,63 @@ export function AgendarCitaPage() {
                     ejecutarBusqueda(solicitudCreada.telefono);
                   }}
                 >
-                  🔍 Ver estado de mi cita
+                  <span aria-hidden="true">🔍 </span>
+                  <span>Ver estado de mi cita</span>
                 </button>
                 <button
+                  type="button"
                   className="btn btn-secundario"
                   onClick={() => {
                     setSolicitudCreada(null);
                     setForm({ nombreSolicitante: "", telefono: "", correo: "", tipoServicio: 3, sedePreferida: 1, fechaPreferida: "", comentario: "" });
                   }}
                 >
-                  ➕ Solicitar otra cita
+                  <span aria-hidden="true">➕ </span>
+                  <span>Solicitar otra cita</span>
                 </button>
               </div>
             </div>
           ) : (
             <div className="panel">
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: 12,
+                  padding: "14px 18px",
+                  marginBottom: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <strong style={{ color: "#1e3a8a", display: "block", fontSize: 14 }}>
+                    👤 ¿Ya eres paciente o prefieres no recordar códigos?
+                  </strong>
+                  <span style={{ color: "#1e40af", fontSize: 13 }}>
+                    Crea tu cuenta verificada en el Portal del Paciente para ver todas tus citas automáticamente.
+                  </span>
+                </div>
+                <Link
+                  to="/portal-paciente"
+                  className="btn btn-primario"
+                  style={{ fontSize: 13, padding: "8px 16px", textDecoration: "none" }}
+                >
+                  Ir al Portal del Paciente →
+                </Link>
+              </div>
+
               {error && <div className="alerta alerta-error">{error}</div>}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!form.correo.trim() || !form.correo.includes("@") || !form.correo.includes(".")) {
+                    setError("Por favor ingresa un correo electrónico válido para recibir tu confirmación.");
+                    return;
+                  }
                   solicitar.mutate();
                 }}
               >
@@ -228,13 +276,19 @@ export function AgendarCitaPage() {
                     />
                   </div>
                   <div className="campo">
-                    <label>Correo (opcional)</label>
+                    <label>
+                      Correo Electrónico <span style={{ color: "#dc2626", fontWeight: 700 }}>* (Obligatorio)</span>
+                    </label>
                     <input
                       type="email"
-                      placeholder="correo@ejemplo.com"
+                      required
+                      placeholder="ejemplo@correo.com"
                       value={form.correo}
                       onChange={(e) => setForm({ ...form, correo: e.target.value })}
                     />
+                    <small style={{ color: "#64748b", fontSize: 11, marginTop: 4, display: "block" }}>
+                      Te enviaremos la confirmación oficial y podrás acceder a tus citas desde el Portal del Paciente.
+                    </small>
                   </div>
                   <div className="campo">
                     <label>Servicio que necesitas</label>
@@ -263,7 +317,7 @@ export function AgendarCitaPage() {
                     <input
                       type="date"
                       required
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={FECHA_MINIMA_HOY}
                       value={form.fechaPreferida}
                       onChange={(e) => setForm({ ...form, fechaPreferida: e.target.value })}
                     />
@@ -317,14 +371,15 @@ export function AgendarCitaPage() {
                     <div
                       key={c.id}
                       style={{
-                        background: "#0f172a",
-                        border: "1px solid #1e293b",
+                        background: "#ffffff",
+                        border: "1px solid var(--slate-300)",
                         borderRadius: 8,
                         padding: 16,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                       }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <span style={{ fontSize: 16, fontWeight: 700, color: "#38bdf8" }}>
+                        <span style={{ fontSize: 16, fontWeight: 700, color: "var(--azul-oscuro)" }}>
                           SOL-{String(c.id).padStart(6, "0")}
                         </span>
                         {tagEstado(c.estado)}
@@ -332,45 +387,58 @@ export function AgendarCitaPage() {
 
                       <div className="form-grid" style={{ fontSize: 13 }}>
                         <div>
-                          <strong style={{ color: "#94a3b8" }}>Solicitante:</strong>
-                          <div>{c.nombreSolicitante}</div>
+                          <strong style={{ color: "var(--slate-500)" }}>Solicitante:</strong>
+                          <div style={{ color: "var(--slate-900)", fontWeight: 600 }}>{c.nombreSolicitante}</div>
                         </div>
                         <div>
-                          <strong style={{ color: "#94a3b8" }}>Teléfono:</strong>
-                          <div>{c.telefono}</div>
+                          <strong style={{ color: "var(--slate-500)" }}>Teléfono:</strong>
+                          <div style={{ color: "var(--slate-900)" }}>{c.telefono}</div>
                         </div>
                         <div>
-                          <strong style={{ color: "#94a3b8" }}>Servicio:</strong>
-                          <div>{TipoServicioCitaTexto[c.tipoServicio]}</div>
+                          <strong style={{ color: "var(--slate-500)" }}>Servicio:</strong>
+                          <div style={{ color: "var(--slate-900)" }}>{TipoServicioCitaTexto[c.tipoServicio]}</div>
                         </div>
                         <div>
-                          <strong style={{ color: "#94a3b8" }}>Sede:</strong>
-                          <div>{SedeTexto[c.sedePreferida]}</div>
+                          <strong style={{ color: "var(--slate-500)" }}>Sede:</strong>
+                          <div style={{ color: "var(--slate-900)" }}>{SedeTexto[c.sedePreferida]}</div>
                         </div>
                         <div>
-                          <strong style={{ color: "#94a3b8" }}>Fecha preferida:</strong>
-                          <div>{new Date(c.fechaPreferida).toLocaleDateString()}</div>
+                          <strong style={{ color: "var(--slate-500)" }}>Fecha preferida:</strong>
+                          <div style={{ color: "var(--slate-900)" }}>{new Date(c.fechaPreferida).toLocaleDateString()}</div>
                         </div>
                         <div>
-                          <strong style={{ color: "#94a3b8" }}>Fecha de solicitud:</strong>
-                          <div>{new Date(c.fechaSolicitud).toLocaleString()}</div>
+                          <strong style={{ color: "var(--slate-500)" }}>Fecha de solicitud:</strong>
+                          <div style={{ color: "var(--slate-900)" }}>{new Date(c.fechaSolicitud).toLocaleString()}</div>
                         </div>
                       </div>
 
-                      <div style={{ marginTop: 12, padding: "8px 12px", background: "#1e293b", borderRadius: 6, fontSize: 12 }}>
+                      <div
+                        style={{
+                          marginTop: 12,
+                          padding: "10px 14px",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          background: c.estado === 1 ? "#fffbeb" : c.estado === 2 ? "#ecfdf5" : "#fef2f2",
+                          border: `1px solid ${c.estado === 1 ? "#fde68a" : c.estado === 2 ? "#a7f3d0" : "#fecaca"}`,
+                          color: c.estado === 1 ? "#92400e" : c.estado === 2 ? "#065f46" : "#991b1b",
+                        }}
+                      >
                         {c.estado === 1 && (
-                          <span style={{ color: "#fbbf24" }}>
-                            ℹ️ Tu solicitud está en cola de revisión por el personal de Recepción. Te contactarán por teléfono para confirmar los detalles.
+                          <span>
+                            <strong aria-hidden="true">ℹ️ </strong>
+                            Tu solicitud está en cola de revisión por el personal de Recepción. Te contactarán por teléfono para confirmar los detalles.
                           </span>
                         )}
                         {c.estado === 2 && (
-                          <span style={{ color: "#4ade80" }}>
-                            ✅ ¡Tu cita ha sido confirmada por Recepción! {c.tipoServicio === 3 ? "Puedes acudir a tu sesión de Masaje TACTO y realizar el cobro directamente en Caja." : "Te esperamos en la sede en la fecha asignada."}
+                          <span>
+                            <strong aria-hidden="true">✅ </strong>
+                            ¡Tu cita ha sido confirmada por Recepción! {c.tipoServicio === 3 ? "Puedes acudir a tu sesión de Masaje TACTO y realizar el cobro directamente en Caja." : "Te esperamos en la sede en la fecha asignada."}
                           </span>
                         )}
                         {c.estado === 3 && (
-                          <span style={{ color: "#f87171" }}>
-                            ❌ Esta solicitud fue cancelada por Recepción o por el solicitante.
+                          <span>
+                            <strong aria-hidden="true">❌ </strong>
+                            Esta solicitud fue cancelada por Recepción o por el solicitante.
                           </span>
                         )}
                       </div>
@@ -381,7 +449,10 @@ export function AgendarCitaPage() {
             )}
           </div>
         )}
+        </div>
       </section>
+
+      <PublicFooter />
     </div>
   );
 }

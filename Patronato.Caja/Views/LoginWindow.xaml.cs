@@ -44,10 +44,29 @@ namespace Patronato.Caja.Views
             await ProbarConexionAsync();
         }
 
+        private void BtnTogglePassword_Click(object sender, RoutedEventArgs e)
+        {
+            if (TxtPasswordVisible.Visibility == Visibility.Visible)
+            {
+                TxtPassword.Password = TxtPasswordVisible.Text;
+                TxtPasswordVisible.Visibility = Visibility.Collapsed;
+                TxtPassword.Visibility = Visibility.Visible;
+                BtnTogglePassword.Content = "👁️";
+            }
+            else
+            {
+                TxtPasswordVisible.Text = TxtPassword.Password;
+                TxtPassword.Visibility = Visibility.Collapsed;
+                TxtPasswordVisible.Visibility = Visibility.Visible;
+                BtnTogglePassword.Content = "🙈";
+            }
+        }
+
         private void BtnDemoCajero_Click(object sender, RoutedEventArgs e)
         {
             TxtUsuario.Text = "cajero";
             TxtPassword.Password = "cajero123";
+            TxtPasswordVisible.Text = "cajero123";
             TxtError.Visibility = Visibility.Collapsed;
         }
 
@@ -55,13 +74,14 @@ namespace Patronato.Caja.Views
         {
             TxtUsuario.Text = "admin";
             TxtPassword.Password = "admin123";
+            TxtPasswordVisible.Text = "admin123";
             TxtError.Visibility = Visibility.Collapsed;
         }
 
         private async void BtnLogin_Click(object sender, RoutedEventArgs e)
         {
             string usuario = TxtUsuario.Text.Trim();
-            string pass = TxtPassword.Password;
+            string pass = TxtPasswordVisible.Visibility == Visibility.Visible ? TxtPasswordVisible.Text : TxtPassword.Password;
 
             if (string.IsNullOrWhiteSpace(usuario) || string.IsNullOrWhiteSpace(pass))
             {

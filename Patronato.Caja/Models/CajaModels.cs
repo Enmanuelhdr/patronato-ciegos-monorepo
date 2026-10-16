@@ -333,6 +333,21 @@ namespace Patronato.Caja.Models
 
         [JsonPropertyName("referenciaId")]
         public int? ReferenciaId { get; set; }
+
+        [JsonPropertyName("esAnulada")]
+        public bool EsAnulada { get; set; }
+
+        [JsonPropertyName("motivoAnulacion")]
+        public string? MotivoAnulacion { get; set; }
+
+        [JsonPropertyName("fechaHoraAnulacion")]
+        public DateTime? FechaHoraAnulacion { get; set; }
+
+        [JsonPropertyName("anuladoPor")]
+        public string? AnuladoPor { get; set; }
+
+        [JsonPropertyName("turnoId")]
+        public int? TurnoId { get; set; }
     }
 
     // ==========================================
@@ -363,6 +378,9 @@ namespace Patronato.Caja.Models
 
         [JsonPropertyName("donaciones")]
         public decimal Donaciones { get; set; }
+
+        [JsonPropertyName("consultas")]
+        public decimal Consultas { get; set; }
     }
 
     public class CuadreCajaDto
@@ -373,11 +391,29 @@ namespace Patronato.Caja.Models
         [JsonPropertyName("cajero")]
         public string Cajero { get; set; } = string.Empty;
 
+        [JsonPropertyName("tieneTurnoActivo")]
+        public bool TieneTurnoActivo { get; set; }
+
+        [JsonPropertyName("turnoId")]
+        public int? TurnoId { get; set; }
+
         [JsonPropertyName("cantidadTransacciones")]
         public int CantidadTransacciones { get; set; }
 
         [JsonPropertyName("totalGeneral")]
         public decimal TotalGeneral { get; set; }
+
+        [JsonPropertyName("fondoInicial")]
+        public decimal FondoInicial { get; set; }
+
+        [JsonPropertyName("efectivoEsperadoEnCaja")]
+        public decimal EfectivoEsperadoEnCaja { get; set; }
+
+        [JsonPropertyName("cantidadAnuladas")]
+        public int CantidadAnuladas { get; set; }
+
+        [JsonPropertyName("totalAnulado")]
+        public decimal TotalAnulado { get; set; }
 
         [JsonPropertyName("porMetodo")]
         public CuadreMetodoDto PorMetodo { get; set; } = new();
@@ -467,5 +503,166 @@ namespace Patronato.Caja.Models
         public string Nombre { get; set; } = string.Empty;
         public int Cantidad { get; set; }
         public decimal PrecioUnitario { get; set; }
+    }
+
+    // ==========================================
+    // 11. GESTIÓN DE TURNOS Y CONTEO DE EFECTIVO
+    // ==========================================
+    public class TurnoCajaDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("cajero")]
+        public string Cajero { get; set; } = string.Empty;
+
+        [JsonPropertyName("sucursal")]
+        public string Sucursal { get; set; } = string.Empty;
+
+        [JsonPropertyName("fechaHoraApertura")]
+        public DateTime FechaHoraApertura { get; set; }
+
+        [JsonPropertyName("fondoInicial")]
+        public decimal FondoInicial { get; set; }
+
+        [JsonPropertyName("estado")]
+        public string Estado { get; set; } = "Abierto";
+
+        [JsonPropertyName("fechaHoraCierre")]
+        public DateTime? FechaHoraCierre { get; set; }
+
+        [JsonPropertyName("totalVentasEfectivo")]
+        public decimal TotalVentasEfectivo { get; set; }
+
+        [JsonPropertyName("totalVentasTarjeta")]
+        public decimal TotalVentasTarjeta { get; set; }
+
+        [JsonPropertyName("totalVentasTransferencia")]
+        public decimal TotalVentasTransferencia { get; set; }
+
+        [JsonPropertyName("totalGeneralVentas")]
+        public decimal TotalGeneralVentas { get; set; }
+
+        [JsonPropertyName("efectivoEsperado")]
+        public decimal EfectivoEsperado { get; set; }
+
+        [JsonPropertyName("efectivoContado")]
+        public decimal? EfectivoContado { get; set; }
+
+        [JsonPropertyName("diferencia")]
+        public decimal? Diferencia { get; set; }
+
+        [JsonPropertyName("desgloseDenominacionesJson")]
+        public string? DesgloseDenominacionesJson { get; set; }
+
+        [JsonPropertyName("observacionesApertura")]
+        public string? ObservacionesApertura { get; set; }
+
+        [JsonPropertyName("observacionesCierre")]
+        public string? ObservacionesCierre { get; set; }
+
+        [JsonPropertyName("montoEntregadoBoveda")]
+        public decimal MontoEntregadoBoveda { get; set; }
+
+        [JsonPropertyName("fondoRemanenteCaja")]
+        public decimal FondoRemanenteCaja { get; set; }
+
+        [JsonPropertyName("destinoFondos")]
+        public string DestinoFondos { get; set; } = "RetiroTotalBoveda";
+    }
+
+    public class TurnoActivoResponseDto
+    {
+        [JsonPropertyName("tieneTurnoActivo")]
+        public bool TieneTurnoActivo { get; set; }
+
+        [JsonPropertyName("turno")]
+        public TurnoCajaDto? Turno { get; set; }
+
+        [JsonPropertyName("mensaje")]
+        public string? Mensaje { get; set; }
+    }
+
+    public class AbrirTurnoRequest
+    {
+        [JsonPropertyName("fondoInicial")]
+        public decimal FondoInicial { get; set; }
+
+        [JsonPropertyName("cajero")]
+        public string Cajero { get; set; } = string.Empty;
+
+        [JsonPropertyName("sucursal")]
+        public string Sucursal { get; set; } = string.Empty;
+
+        [JsonPropertyName("observaciones")]
+        public string? Observaciones { get; set; }
+    }
+
+    public class CerrarTurnoRequest
+    {
+        [JsonPropertyName("turnoId")]
+        public int TurnoId { get; set; }
+
+        [JsonPropertyName("efectivoContado")]
+        public decimal EfectivoContado { get; set; }
+
+        [JsonPropertyName("desgloseDenominacionesJson")]
+        public string DesgloseDenominacionesJson { get; set; } = "{}";
+
+        [JsonPropertyName("observaciones")]
+        public string? Observaciones { get; set; }
+
+        [JsonPropertyName("montoEntregadoBoveda")]
+        public decimal? MontoEntregadoBoveda { get; set; }
+
+        [JsonPropertyName("fondoRemanenteCaja")]
+        public decimal? FondoRemanenteCaja { get; set; }
+
+        [JsonPropertyName("destinoFondos")]
+        public string? DestinoFondos { get; set; }
+    }
+
+    public class AnularTransaccionRequest
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("usuarioSupervisor")]
+        public string UsuarioSupervisor { get; set; } = string.Empty;
+
+        [JsonPropertyName("passwordSupervisor")]
+        public string PasswordSupervisor { get; set; } = string.Empty;
+
+        [JsonPropertyName("motivo")]
+        public string Motivo { get; set; } = string.Empty;
+    }
+
+    public class DenominacionItem : INotifyPropertyChanged
+    {
+        private int _cantidad;
+
+        public decimal Valor { get; set; }
+        public string Descripcion { get; set; } = string.Empty;
+        public bool EsBillete { get; set; } = true;
+
+        public int Cantidad
+        {
+            get => _cantidad;
+            set
+            {
+                if (_cantidad != value)
+                {
+                    _cantidad = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(Total));
+                }
+            }
+        }
+
+        public decimal Total => Valor * Cantidad;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? propName = null) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
     }
 }

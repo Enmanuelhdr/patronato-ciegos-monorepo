@@ -36,8 +36,11 @@ namespace Patronato.Core.Controllers
         [AllowAnonymous]
         public async Task<ActionResult<SolicitudCita>> PostCita(SolicitudCita solicitud)
         {
-            if (string.IsNullOrWhiteSpace(solicitud.NombreSolicitante) || string.IsNullOrWhiteSpace(solicitud.Telefono))
-                return BadRequest("El nombre y el teléfono son obligatorios.");
+            if (string.IsNullOrWhiteSpace(solicitud.NombreSolicitante) || string.IsNullOrWhiteSpace(solicitud.Telefono) || string.IsNullOrWhiteSpace(solicitud.Correo))
+                return BadRequest("El nombre, teléfono y correo electrónico institucional/personal son obligatorios para procesar la cita.");
+
+            if (!solicitud.Correo.Contains("@") || !solicitud.Correo.Contains("."))
+                return BadRequest("El correo electrónico proporcionado no tiene un formato válido (ejemplo: usuario@correo.com).");
 
             // Consulta Oftalmológica y Rehabilitación exigen un Beneficiario registrado
             // (cédula + condición visual) que una solicitud pública y anónima no puede

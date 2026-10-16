@@ -62,6 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const data = await loginApi(usuario, password);
+      if (data.rol?.toLowerCase() === "cajero") {
+        throw new Error(
+          "Acceso Denegado: El personal de Cajero opera exclusivamente desde la aplicación de escritorio de Caja y Facturación POS. En la web únicamente acceden Administrador, Recepción y Especialistas."
+        );
+      }
       const nuevaSesion: SesionUsuario = {
         usuarioId: data.usuarioId,
         nombre: data.nombre,
@@ -76,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem(CLAVE_SESION, JSON.stringify(nuevaSesion));
       return true;
     } catch (ex) {
-      setError(ex instanceof ApiError ? ex.message : "No se pudo conectar con el Gateway.");
+      setError(ex instanceof ApiError ? ex.message : "No se pudo conectar con el servidor institucional.");
       return false;
     } finally {
       setCargando(false);

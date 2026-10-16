@@ -14,6 +14,9 @@ export function CambiarPasswordPage() {
   const [passwordActual, setPasswordActual] = useState("");
   const [passwordNueva, setPasswordNueva] = useState("");
   const [confirmar, setConfirmar] = useState("");
+  const [verActual, setVerActual] = useState(false);
+  const [verNueva, setVerNueva] = useState(false);
+  const [verConfirmar, setVerConfirmar] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -54,7 +57,7 @@ export function CambiarPasswordPage() {
         <p>
           {sesion.debeCambiarPassword
             ? "Por seguridad, debes establecer una contraseña propia antes de continuar."
-            : "Cambia tu contraseña de acceso al Core."}
+            : "Cambia tu contraseña de acceso al portal institucional."}
         </p>
       </div>
 
@@ -67,15 +70,94 @@ export function CambiarPasswordPage() {
 
           <div className="campo">
             <label>Contraseña actual</label>
-            <input type="password" required value={passwordActual} onChange={(e) => setPasswordActual(e.target.value)} autoFocus />
+            <div style={{ position: "relative" }}>
+              <input
+                type={verActual ? "text" : "password"}
+                required
+                value={passwordActual}
+                onChange={(e) => setPasswordActual(e.target.value)}
+                autoFocus
+                style={{ paddingRight: 40, width: "100%" }}
+              />
+              <button
+                type="button"
+                onClick={() => setVerActual(!verActual)}
+                aria-label={verActual ? "Ocultar" : "Ver"}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 16,
+                  color: "#64748b",
+                }}
+              >
+                {verActual ? "🙈" : "👁️"}
+              </button>
+            </div>
           </div>
           <div className="campo">
             <label>Contraseña nueva</label>
-            <input type="password" required value={passwordNueva} onChange={(e) => setPasswordNueva(e.target.value)} />
+            <div style={{ position: "relative" }}>
+              <input
+                type={verNueva ? "text" : "password"}
+                required
+                value={passwordNueva}
+                onChange={(e) => setPasswordNueva(e.target.value)}
+                style={{ paddingRight: 40, width: "100%" }}
+              />
+              <button
+                type="button"
+                onClick={() => setVerNueva(!verNueva)}
+                aria-label={verNueva ? "Ocultar" : "Ver"}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 16,
+                  color: "#64748b",
+                }}
+              >
+                {verNueva ? "🙈" : "👁️"}
+              </button>
+            </div>
           </div>
           <div className="campo">
             <label>Confirmar contraseña nueva</label>
-            <input type="password" required value={confirmar} onChange={(e) => setConfirmar(e.target.value)} />
+            <div style={{ position: "relative" }}>
+              <input
+                type={verConfirmar ? "text" : "password"}
+                required
+                value={confirmar}
+                onChange={(e) => setConfirmar(e.target.value)}
+                style={{ paddingRight: 40, width: "100%" }}
+              />
+              <button
+                type="button"
+                onClick={() => setVerConfirmar(!verConfirmar)}
+                aria-label={verConfirmar ? "Ocultar" : "Ver"}
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 16,
+                  color: "#64748b",
+                }}
+              >
+                {verConfirmar ? "🙈" : "👁️"}
+              </button>
+            </div>
           </div>
 
           <button className="btn btn-primario" type="submit" disabled={enviando}>

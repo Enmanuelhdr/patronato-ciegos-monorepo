@@ -16,6 +16,9 @@ namespace Patronato.Core.Entities
         public string Correo { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         public string? Telefono { get; set; }
+        public string? Cedula { get; set; }
+        public bool CorreoVerificado { get; set; } = false;
+        public string? CodigoVerificacionCorreo { get; set; }
 
         public EstadoWebUser Estado { get; set; } = EstadoWebUser.Activo;
         public DateTime FechaRegistro { get; set; } = DateTime.UtcNow;

@@ -45,7 +45,7 @@ public class CoreGatewayService
                 // Consultas: la Caja ya no usa HTTP en absoluto, todo entra por el mismo socket.
                 "LOGIN" => await LoginAsync(request, origen),
                 "SUCURSALES_CONSULTAR" => await ConsultarAsync(request, origen, "api/Sucursales"),
-                "INVENTARIO_CONSULTAR" => await ConsultarAsync(request, origen, "api/inventario"),
+                "INVENTARIO_CONSULTAR" => await ConsultarAsync(request, origen, "api/inventario?tamanoPagina=500&activo=true"),
                 "MASAJES_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/masajes-pendientes"),
                 "CONSULTAS_PENDIENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/consultas-pendientes"),
                 "CLIENTES_FRECUENTES_CONSULTAR" => await ConsultarAsync(request, origen, "api/caja/clientes-frecuentes"),
@@ -53,6 +53,10 @@ public class CoreGatewayService
                 "PRESTAMOS_ACTIVOS_CONSULTAR" => await PrestamosActivosAsync(request, origen),
                 "CUADRE_CAJA_CONSULTAR" => await CuadreCajaAsync(request, origen),
                 "TRANSACCIONES_CONSULTAR" => await TransaccionesAsync(request, origen),
+                "TURNO_ACTIVO_CONSULTAR" => await TurnoActivoAsync(request, origen),
+                "TURNO_ABRIR" => await AbrirTurnoAsync(request, origen),
+                "TURNO_CERRAR" => await CerrarTurnoAsync(request, origen),
+                "TRANSACCION_ANULAR" => await AnularTransaccionAsync(request, origen),
 
                 _ => Rechazar(request, "12", $"Código de transacción no soportado: {request.CodigoTransaccion}")
             };
@@ -135,7 +139,7 @@ public class CoreGatewayService
     {
         try
         {
-            var response = await EnviarAsync(metodo, ruta, content, origen);
+            var response = await EnviarAsync(metodo, ruta, content, origen, request.Stan);
             return await TraducirRespuestaAsync(request, response);
         }
         catch (Exception ex) when (EsErrorDeConectividad(ex))
@@ -173,7 +177,7 @@ public class CoreGatewayService
                 ? new StringContent(pendiente.CuerpoJson, Encoding.UTF8, "application/json")
                 : null;
 
-            var response = await EnviarAsync(new HttpMethod(pendiente.Metodo), pendiente.Ruta, content, pendiente.Origen);
+            var response = await EnviarAsync(new HttpMethod(pendiente.Metodo), pendiente.Ruta, content, pendiente.Origen, pendiente.Stan);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -194,9 +198,11 @@ public class CoreGatewayService
     private async Task<TransaccionResponse> LoginAsync(TransaccionRequest request, string origen)
     {
         var datos = request.Datos;
-        var usuario = Uri.EscapeDataString(ObtenerTexto(datos, "nombreUsuario", ""));
-        var password = Uri.EscapeDataString(ObtenerTexto(datos, "password", ""));
-        var response = await EnviarAsync(HttpMethod.Post, $"api/Usuarios/login?nombreUsuario={usuario}&password={password}", null, origen);
+        var usuario = ObtenerTexto(datos, "nombreUsuario", "");
+        var password = ObtenerTexto(datos, "password", "");
+        var payload = JsonSerializer.Serialize(new { nombreUsuario = usuario, password });
+        var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        var response = await EnviarAsync(HttpMethod.Post, "api/Usuarios/login", content, origen, request.Stan);
         return await TraducirRespuestaAsync(request, response);
     }
 
@@ -219,6 +225,39 @@ public class CoreGatewayService
     {
         var ruta = "api/caja/transacciones" + ConstruirQueryFechaCajero(request.Datos);
         return await ConsultarAsync(request, origen, ruta);
+    }
+
+    private async Task<TransaccionResponse> TurnoActivoAsync(TransaccionRequest request, string origen)
+    {
+        var cajero = ObtenerTexto(request.Datos, "cajero", "");
+        var sucursal = ObtenerTexto(request.Datos, "sucursal", "");
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(cajero)) query.Add($"cajero={Uri.EscapeDataString(cajero)}");
+        if (!string.IsNullOrWhiteSpace(sucursal)) query.Add($"sucursal={Uri.EscapeDataString(sucursal)}");
+        var ruta = "api/caja/turno-activo" + (query.Count > 0 ? "?" + string.Join("&", query) : "");
+        return await ConsultarAsync(request, origen, ruta);
+    }
+
+    private async Task<TransaccionResponse> AbrirTurnoAsync(TransaccionRequest request, string origen)
+    {
+        var json = request.Datos.GetRawText();
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, "api/caja/abrir-turno", content, json);
+    }
+
+    private async Task<TransaccionResponse> CerrarTurnoAsync(TransaccionRequest request, string origen)
+    {
+        var json = request.Datos.GetRawText();
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, "api/caja/cerrar-turno", content, json);
+    }
+
+    private async Task<TransaccionResponse> AnularTransaccionAsync(TransaccionRequest request, string origen)
+    {
+        var id = request.Datos.GetProperty("id").GetInt32();
+        var json = request.Datos.GetRawText();
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        return await EnviarCobroAsync(request, origen, HttpMethod.Post, $"api/caja/anular-transaccion/{id}", content, json);
     }
 
     private static string ConstruirQueryFechaCajero(JsonElement datos)
@@ -261,10 +300,15 @@ public class CoreGatewayService
             ? el.GetString() ?? valorPorDefecto
             : valorPorDefecto;
 
-    private async Task<HttpResponseMessage> EnviarAsync(HttpMethod metodo, string url, HttpContent? content, string origen)
+    private async Task<HttpResponseMessage> EnviarAsync(HttpMethod metodo, string url, HttpContent? content, string origen, string? stan = null)
     {
         var mensaje = new HttpRequestMessage(metodo, url) { Content = content };
         mensaje.Headers.Add("X-Origen", origen);
+        if (!string.IsNullOrWhiteSpace(stan))
+        {
+            mensaje.Headers.Add("X-Stan", stan);
+            mensaje.Headers.Add("X-Idempotency-Key", stan);
+        }
         return await _httpClient.SendAsync(mensaje);
     }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using Patronato.Caja.Models;
 
 namespace Patronato.Caja.Services
 {
@@ -33,10 +34,21 @@ namespace Patronato.Caja.Services
         private static readonly List<ColaItem> Pendientes = Cargar();
         private static int _contador = 0;
 
+        private static readonly string RutaRechazados = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PatronatoCaja", "cola_rechazadas.json");
+
+        private static readonly string RutaTurnoOffline = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PatronatoCaja", "turno_offline_activo.json");
+
         // Se dispara cada vez que la cola cambia (se encola algo nuevo o se confirma una
         // pendiente); MainWindow lo usa para refrescar el badge de estado sin tener que
         // preguntar en cada tick.
         public static event Action? CambioPendientes;
+
+        // Se dispara cuando el Core rechaza formalmente un cobro offline (código 05, etc.)
+        public static event Action<string, string>? TransaccionRechazada;
 
         public static int CantidadPendientes
         {
@@ -64,8 +76,175 @@ namespace Patronato.Caja.Services
                     FechaHora = DateTime.Now
                 });
                 Guardar();
+                ActualizarMetricasTurnoOfflineSiAplica(codigo, datos);
             }
             CambioPendientes?.Invoke();
+        }
+
+        public static int GenerarIdTurnoOffline()
+        {
+            lock (Lock)
+            {
+                _contador++;
+                return -1 * ((int)(DateTime.Now.Ticks % 100000) + _contador);
+            }
+        }
+
+        public static void GuardarTurnoOffline(TurnoCajaDto turno)
+        {
+            lock (Lock)
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(RutaTurnoOffline)!;
+                    Directory.CreateDirectory(dir);
+                    File.WriteAllText(RutaTurnoOffline, JsonSerializer.Serialize(turno, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("No se pudo persistir el turno offline.", ex);
+                }
+            }
+        }
+
+        public static TurnoCajaDto? ObtenerTurnoOfflineActivo()
+        {
+            lock (Lock)
+            {
+                try
+                {
+                    if (File.Exists(RutaTurnoOffline))
+                    {
+                        var json = File.ReadAllText(RutaTurnoOffline);
+                        var turno = JsonSerializer.Deserialize<TurnoCajaDto>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                        if (turno != null && string.Equals(turno.Estado, "Abierto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return turno;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Error al leer el turno offline activo.", ex);
+                }
+                return null;
+            }
+        }
+
+        public static TurnoCajaDto CerrarTurnoOffline(
+            int turnoId, 
+            decimal efectivoContado, 
+            string desgloseJson, 
+            string? observaciones,
+            decimal? montoBoveda, 
+            decimal? fondoRemanente, 
+            string? destinoFondos)
+        {
+            lock (Lock)
+            {
+                var turno = ObtenerTurnoOfflineActivo() ?? new TurnoCajaDto
+                {
+                    Id = turnoId,
+                    Cajero = "Caja Principal",
+                    Sucursal = "Sede Central",
+                    FondoInicial = 0,
+                    FechaHoraApertura = DateTime.Now
+                };
+
+                turno.Estado = "Cerrado";
+                turno.FechaHoraCierre = DateTime.Now;
+                turno.EfectivoContado = efectivoContado;
+                turno.Diferencia = efectivoContado - (turno.FondoInicial + turno.TotalVentasEfectivo);
+                turno.ObservacionesCierre = observaciones;
+                turno.MontoEntregadoBoveda = montoBoveda ?? 0;
+                turno.FondoRemanenteCaja = fondoRemanente ?? 0;
+                turno.DestinoFondos = destinoFondos ?? "RetiroTotalBoveda";
+
+                try
+                {
+                    if (File.Exists(RutaTurnoOffline))
+                    {
+                        File.Delete(RutaTurnoOffline);
+                    }
+                }
+                catch { }
+
+                return turno;
+            }
+        }
+
+        public static void LimpiarTurnoOffline()
+        {
+            lock (Lock)
+            {
+                try
+                {
+                    if (File.Exists(RutaTurnoOffline))
+                    {
+                        File.Delete(RutaTurnoOffline);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("No se pudo limpiar el turno offline.", ex);
+                }
+            }
+        }
+
+        private static void ActualizarMetricasTurnoOfflineSiAplica(string codigo, object datos)
+        {
+            try
+            {
+                var turno = ObtenerTurnoOfflineActivo();
+                if (turno == null) return;
+
+                decimal monto = 0;
+                string metodo = "Efectivo";
+
+                var json = JsonSerializer.Serialize(datos, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("metodoPago", out var mpEl))
+                {
+                    metodo = mpEl.GetString() ?? "Efectivo";
+                }
+
+                if (root.TryGetProperty("montoRecibido", out var mrEl) && mrEl.TryGetDecimal(out var mr))
+                {
+                    monto = mr;
+                }
+                else if (root.TryGetProperty("montoAprobado", out var maEl) && maEl.TryGetDecimal(out var ma))
+                {
+                    monto = ma;
+                }
+                else if (root.TryGetProperty("montoDonacion", out var mdEl) && mdEl.TryGetDecimal(out var md))
+                {
+                    monto = md;
+                }
+
+                if (string.Equals(metodo, "Efectivo", StringComparison.OrdinalIgnoreCase))
+                {
+                    turno.TotalVentasEfectivo += monto;
+                }
+                else if (string.Equals(metodo, "Tarjeta", StringComparison.OrdinalIgnoreCase))
+                {
+                    turno.TotalVentasTarjeta += monto;
+                }
+                else
+                {
+                    turno.TotalVentasTransferencia += monto;
+                }
+
+                turno.TotalGeneralVentas = turno.TotalVentasEfectivo + turno.TotalVentasTarjeta + turno.TotalVentasTransferencia;
+                turno.EfectivoEsperado = turno.FondoInicial + turno.TotalVentasEfectivo;
+
+                GuardarTurnoOffline(turno);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("No se pudieron actualizar métricas del turno offline.", ex);
+            }
         }
 
         public static List<ColaItem> ObtenerTodos()
@@ -84,6 +263,43 @@ namespace Patronato.Caja.Services
                 }
             }
             CambioPendientes?.Invoke();
+        }
+
+        public static void ArchivarRechazado(ColaItem item, string motivo)
+        {
+            lock (Lock)
+            {
+                Pendientes.Remove(item);
+                Guardar();
+
+                try
+                {
+                    var dir = Path.GetDirectoryName(RutaRechazados)!;
+                    Directory.CreateDirectory(dir);
+                    var lista = new List<object>();
+                    if (File.Exists(RutaRechazados))
+                    {
+                        var json = File.ReadAllText(RutaRechazados);
+                        lista = JsonSerializer.Deserialize<List<object>>(json) ?? new();
+                    }
+                    lista.Add(new
+                    {
+                        item.Codigo,
+                        item.NumeroReciboProvisional,
+                        item.FechaHora,
+                        FechaRechazo = DateTime.Now,
+                        Motivo = motivo,
+                        Datos = item.Datos
+                    });
+                    File.WriteAllText(RutaRechazados, JsonSerializer.Serialize(lista));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("No se pudo archivar la transacción rechazada.", ex);
+                }
+            }
+            CambioPendientes?.Invoke();
+            TransaccionRechazada?.Invoke(item.NumeroReciboProvisional, motivo);
         }
 
         private static List<ColaItem> Cargar()

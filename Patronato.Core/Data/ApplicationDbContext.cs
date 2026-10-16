@@ -26,6 +26,7 @@ namespace Patronato.Core.Data
         public DbSet<Usuario> Usuarios { get; set; }
         public DbSet<LogEntry> Logs { get; set; }
         public DbSet<TransaccionCaja> TransaccionesCaja { get; set; }
+        public DbSet<TurnoCaja> TurnosCaja { get; set; }
         public DbSet<OrdenPedidoCaja> OrdenesPedidoCaja { get; set; }
         public DbSet<SolicitudCita> SolicitudesCita { get; set; }
 

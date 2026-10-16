@@ -17,9 +17,27 @@ var builder = WebApplication.CreateBuilder(args);
 log4net.Config.XmlConfigurator.Configure(new FileInfo(Path.Combine(builder.Environment.ContentRootPath, "log4net.config")));
 var accionesLogger = log4net.LogManager.GetLogger("Patronato.Core.Acciones");
 
-// 1. Configurar la Base de Datos SQLite local
+// 1. Configurar la Base de Datos SQLite local con ruta absoluta garantizada
+var rawConn = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=patronato.db";
+string sqliteConn = rawConn;
+if (rawConn.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+{
+    var dbFileName = rawConn.Substring("Data Source=".Length).Trim();
+    if (!Path.IsPathRooted(dbFileName))
+    {
+        var contentRootDb = Path.Combine(builder.Environment.ContentRootPath, dbFileName);
+        var baseDirDb = Path.Combine(AppContext.BaseDirectory, dbFileName);
+        var resolvedPath = contentRootDb;
+        if (!File.Exists(contentRootDb) && File.Exists(baseDirDb))
+        {
+            resolvedPath = baseDirDb;
+        }
+        sqliteConn = $"Data Source={resolvedPath}";
+    }
+}
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlite(sqliteConn));
 
 // 2. Permitir que la Web y la Caja de tus compañeros se conecten (CORS)
 builder.Services.AddCors(options =>
@@ -37,6 +55,7 @@ builder.Services.AddCors(options =>
 var jwtSecretKey = builder.Configuration["Jwt:SecretKey"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Patronato.Core";
 builder.Services.AddSingleton<JwtService>();
+builder.Services.AddSingleton<IEmailService, EmailService>();
 builder.Services.AddSingleton<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 builder.Services.AddSingleton<IPasswordHasher<WebUser>, PasswordHasher<WebUser>>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -122,14 +141,39 @@ using (var scope = app.Services.CreateScope())
     DbInitializer.Initialize(db); // Carga datos iniciales para usuarios, catálogo, masajes y préstamos
 }
 
-// 5. Configurar Swagger para pruebas interactivas
-if (app.Environment.IsDevelopment() || true)
+// 5. Configurar Swagger para pruebas interactivas (solo en desarrollo)
+if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 app.UseCors("AllowAll");
+
+// Helper para evitar escribir contraseñas y secretos en la tabla Logs
+static string SanitizarQuery(QueryString queryString)
+{
+    if (!queryString.HasValue) return string.Empty;
+    var parsed = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(queryString.Value);
+    var clean = new List<string>();
+    foreach (var (k, v) in parsed)
+    {
+        if (k.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+            k.Contains("clave", StringComparison.OrdinalIgnoreCase) ||
+            k.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+            k.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+            k.Contains("cvv", StringComparison.OrdinalIgnoreCase) ||
+            k.Contains("tarjeta", StringComparison.OrdinalIgnoreCase))
+        {
+            clean.Add($"{Uri.EscapeDataString(k)}=***REDACTED***");
+        }
+        else
+        {
+            clean.Add($"{Uri.EscapeDataString(k)}={Uri.EscapeDataString(v.ToString())}");
+        }
+    }
+    return clean.Count > 0 ? "?" + string.Join("&", clean) : string.Empty;
+}
 
 // 6. Bloquear todo lo que no venga del API Gateway: solo él conoce esta clave.
 // De paso, registrar cada acción (y sus errores) indicando si vino de Caja o de Web,
@@ -155,14 +199,16 @@ app.Use(async (context, next) =>
             : "Desconocido";
         log4net.LogicalThreadContext.Properties["Origen"] = origen;
 
+        var urlSegura = $"{context.Request.Path}{SanitizarQuery(context.Request.QueryString)}";
+
         try
         {
             await next();
-            accionesLogger.Info($"{context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> {context.Response.StatusCode}");
+            accionesLogger.Info($"{context.Request.Method} {urlSegura} -> {context.Response.StatusCode}");
         }
         catch (Exception ex)
         {
-            accionesLogger.Error($"Error en {context.Request.Method} {context.Request.Path}{context.Request.QueryString}", ex);
+            accionesLogger.Error($"Error en {context.Request.Method} {urlSegura}", ex);
             throw;
         }
         return;
@@ -175,8 +221,34 @@ app.MapMonitorEndpoints();
 app.MapOperacionesEndpoints();
 
 app.UseAuthentication();
+
+// 7. Puente de autenticación interna para la terminal de Caja y el Gateway
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers.TryGetValue("X-Gateway-Key", out var clave) && clave == gatewayApiKey)
+    {
+        var origen = context.Request.Headers.TryGetValue("X-Origen", out var o) ? o.ToString() : "Caja";
+        var claims = new List<System.Security.Claims.Claim>
+        {
+            new(System.Security.Claims.ClaimTypes.NameIdentifier, "1"),
+            new(System.Security.Claims.ClaimTypes.Name, "Terminal-Caja"),
+            new(System.Security.Claims.ClaimTypes.Role, "Administrador"),
+            new(System.Security.Claims.ClaimTypes.Role, "Cajero"),
+            new("ctx", "core"),
+            new("origen", origen)
+        };
+        foreach (var p in PermisosCore.PermisosAdministrador)
+        {
+            claims.Add(new("permiso", p));
+        }
+        var identity = new System.Security.Claims.ClaimsIdentity(claims, "GatewayCajaInternal");
+        context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+    }
+    await next();
+});
+
 app.UseAuthorization();
 app.MapControllers();
-app.MapGet("/", () => Results.Redirect("/swagger"));
+app.MapGet("/", () => Results.Redirect(app.Environment.IsDevelopment() ? "/swagger" : "/monitor"));
 
 app.Run();

@@ -121,8 +121,8 @@ export function UsuariosPage() {
   return (
     <>
       <PageHeader
-        titulo="Usuarios del Core"
-        subtitulo="Altas de personal, asignación de roles y control de acceso (activar/suspender/revocar). Exclusivo de SuperAdmin/IT."
+        titulo="Personal y Usuarios Institucionales"
+        subtitulo="Gestión de colaboradores, asignación de roles y control de acceso del Patronato."
         accion={puedeCrear ? <button className="btn btn-primario" onClick={() => setMostrarForm((v) => !v)}>{mostrarForm ? "Cancelar" : "+ Registrar empleado"}</button> : undefined}
       />
 

@@ -83,5 +83,10 @@ namespace Patronato.Core.Servicios
         {
             InventarioVer, InventarioMovimientos,
         };
+
+        public static readonly string[] PermisosRecepcionista = new[]
+        {
+            InventarioVer,
+        };
     }
 }

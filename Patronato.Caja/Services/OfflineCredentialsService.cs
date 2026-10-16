@@ -16,6 +16,7 @@ namespace Patronato.Caja.Services
     {
         public string NombreUsuario { get; set; } = string.Empty;
         public string PasswordHashLocal { get; set; } = string.Empty;
+        public string SaltHex { get; set; } = string.Empty;
         public int UsuarioId { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string Rol { get; set; } = string.Empty;
@@ -37,8 +38,21 @@ namespace Patronato.Caja.Services
             "PatronatoCaja", "credenciales_offline.json");
 
         private static readonly object Lock = new();
+        private const int Pbkdf2Iterations = 100_000;
+        private const int KeyLengthBytes = 32;
 
-        private static string Hash(string password)
+        private static string HashPbkdf2(string password, byte[] salt)
+        {
+            byte[] hash = Rfc2898DeriveBytes.Pbkdf2(
+                Encoding.UTF8.GetBytes(password),
+                salt,
+                Pbkdf2Iterations,
+                HashAlgorithmName.SHA256,
+                KeyLengthBytes);
+            return Convert.ToHexString(hash);
+        }
+
+        private static string LegacySha256(string password)
         {
             byte[] bytes = SHA256.HashData(Encoding.UTF8.GetBytes(password));
             return Convert.ToHexString(bytes);
@@ -52,10 +66,16 @@ namespace Patronato.Caja.Services
             {
                 var lista = Cargar();
                 lista.RemoveAll(c => string.Equals(c.NombreUsuario, nombreUsuario, StringComparison.OrdinalIgnoreCase));
+
+                byte[] salt = RandomNumberGenerator.GetBytes(16);
+                string saltHex = Convert.ToHexString(salt);
+                string hash = HashPbkdf2(password, salt);
+
                 lista.Add(new CredencialOffline
                 {
                     NombreUsuario = nombreUsuario,
-                    PasswordHashLocal = Hash(password),
+                    PasswordHashLocal = hash,
+                    SaltHex = saltHex,
                     UsuarioId = datos.UsuarioId,
                     Nombre = datos.Nombre,
                     Rol = datos.Rol,
@@ -68,16 +88,44 @@ namespace Patronato.Caja.Services
         }
 
         // Intenta validar contra la última credencial guardada localmente para este usuario.
-        // Solo tiene éxito si coincide el usuario Y el hash de la contraseña.
+        // Solo tiene éxito si coincide el usuario Y el hash salado PBKDF2 de la contraseña.
         public static CredencialOffline? ValidarOffline(string nombreUsuario, string password)
         {
             lock (Lock)
             {
                 var lista = Cargar();
-                string hash = Hash(password);
-                return lista.FirstOrDefault(c =>
-                    string.Equals(c.NombreUsuario, nombreUsuario, StringComparison.OrdinalIgnoreCase) &&
-                    c.PasswordHashLocal == hash);
+                var credencial = lista.FirstOrDefault(c =>
+                    string.Equals(c.NombreUsuario, nombreUsuario, StringComparison.OrdinalIgnoreCase));
+
+                if (credencial == null) return null;
+
+                if (!string.IsNullOrEmpty(credencial.SaltHex))
+                {
+                    byte[] salt = Convert.FromHexString(credencial.SaltHex);
+                    string hashCalculado = HashPbkdf2(password, salt);
+                    if (CryptographicOperations.FixedTimeEquals(
+                        Encoding.UTF8.GetBytes(credencial.PasswordHashLocal),
+                        Encoding.UTF8.GetBytes(hashCalculado)))
+                    {
+                        return credencial;
+                    }
+                }
+                else
+                {
+                    // Compatibilidad con hashes legacy SHA256
+                    string legacyHash = LegacySha256(password);
+                    if (string.Equals(credencial.PasswordHashLocal, legacyHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Auto-upgrade transparente a PBKDF2 con sal
+                        byte[] salt = RandomNumberGenerator.GetBytes(16);
+                        credencial.SaltHex = Convert.ToHexString(salt);
+                        credencial.PasswordHashLocal = HashPbkdf2(password, salt);
+                        Guardar(lista);
+                        return credencial;
+                    }
+                }
+
+                return null;
             }
         }
 

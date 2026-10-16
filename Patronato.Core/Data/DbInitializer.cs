@@ -137,8 +137,48 @@ namespace Patronato.Core.Data
             EnsureColumn(context, "Usuarios", "IntentosFallidos", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn(context, "Usuarios", "BloqueadoHasta", "TEXT NULL");
 
+            EnsureColumn(context, "WebUsers", "Cedula", "TEXT NULL");
+            EnsureColumn(context, "WebUsers", "CorreoVerificado", "INTEGER NOT NULL DEFAULT 1");
+            EnsureColumn(context, "WebUsers", "CodigoVerificacionCorreo", "TEXT NULL");
+
             EnsureColumn(context, "ProductosArticulos", "StockMinimo", "INTEGER NOT NULL DEFAULT 5");
             EnsureColumn(context, "ProductosArticulos", "Activo", "INTEGER NOT NULL DEFAULT 1");
+
+            EnsureColumn(context, "TransaccionesCaja", "Stan", "TEXT NULL");
+            EnsureColumn(context, "TransaccionesCaja", "IdempotencyKey", "TEXT NULL");
+            EnsureColumn(context, "TransaccionesCaja", "EsAnulada", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn(context, "TransaccionesCaja", "MotivoAnulacion", "TEXT NULL");
+            EnsureColumn(context, "TransaccionesCaja", "FechaHoraAnulacion", "TEXT NULL");
+            EnsureColumn(context, "TransaccionesCaja", "AnuladoPor", "TEXT NULL");
+            EnsureColumn(context, "TransaccionesCaja", "TurnoId", "INTEGER NULL");
+
+            context.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""TurnosCaja"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_TurnosCaja"" PRIMARY KEY AUTOINCREMENT,
+                    ""Cajero"" TEXT NOT NULL,
+                    ""Sucursal"" TEXT NOT NULL,
+                    ""FechaHoraApertura"" TEXT NOT NULL,
+                    ""FondoInicial"" NUMERIC NOT NULL,
+                    ""Estado"" TEXT NOT NULL DEFAULT 'Abierto',
+                    ""FechaHoraCierre"" TEXT NULL,
+                    ""TotalVentasEfectivo"" NUMERIC NOT NULL DEFAULT 0,
+                    ""TotalVentasTarjeta"" NUMERIC NOT NULL DEFAULT 0,
+                    ""TotalVentasTransferencia"" NUMERIC NOT NULL DEFAULT 0,
+                    ""TotalGeneralVentas"" NUMERIC NOT NULL DEFAULT 0,
+                    ""EfectivoEsperado"" NUMERIC NOT NULL DEFAULT 0,
+                    ""EfectivoContado"" NUMERIC NOT NULL DEFAULT 0,
+                    ""Diferencia"" NUMERIC NOT NULL DEFAULT 0,
+                    ""DesgloseDenominacionesJson"" TEXT NULL,
+                    ""ObservacionesApertura"" TEXT NULL,
+                    ""ObservacionesCierre"" TEXT NULL,
+                    ""MontoEntregadoBoveda"" NUMERIC NOT NULL DEFAULT 0,
+                    ""FondoRemanenteCaja"" NUMERIC NOT NULL DEFAULT 0,
+                    ""DestinoFondos"" TEXT NOT NULL DEFAULT 'RetiroTotalBoveda'
+                );");
+
+            EnsureColumn(context, "TurnosCaja", "MontoEntregadoBoveda", "NUMERIC NOT NULL DEFAULT 0");
+            EnsureColumn(context, "TurnosCaja", "FondoRemanenteCaja", "NUMERIC NOT NULL DEFAULT 0");
+            EnsureColumn(context, "TurnosCaja", "DestinoFondos", "TEXT NOT NULL DEFAULT 'RetiroTotalBoveda'");
         }
 
         // Mapeo del viejo enum RolUsuario (ya eliminado de la entidad Usuario) a los
@@ -221,7 +261,7 @@ namespace Patronato.Core.Data
                 ("Cajero", "Opera la Caja y los cobros.", Array.Empty<string>()),
                 ("MedicoOftalmologo", "Atiende consultas oftalmológicas de prevención.", Array.Empty<string>()),
                 ("InstructorRehabilitacion", "Gestiona los talleres de rehabilitación (Braille, bastón, oficios).", Array.Empty<string>()),
-                ("Recepcionista", "Registra pacientes y agenda citas.", Array.Empty<string>()),
+                ("Recepcionista", "Registra pacientes, agenda citas y consulta catálogo de inventario.", PermisosCore.PermisosRecepcionista),
             };
 
             foreach (var (nombre, descripcion, permisos) in roles)
@@ -264,6 +304,7 @@ namespace Patronato.Core.Data
                 (PermisosCore.RolAdminOperativo, PermisosCore.PermisosAdminOperativo),
                 (PermisosCore.RolAuditor, PermisosCore.PermisosAuditor),
                 (PermisosCore.RolOperadorLogistico, PermisosCore.PermisosOperadorLogistico),
+                ("Recepcionista", PermisosCore.PermisosRecepcionista),
             };
 
             foreach (var (rolNombre, permisos) in mapaRolPermisos)
@@ -343,12 +384,15 @@ namespace Patronato.Core.Data
             SembrarRolesYPermisos(context);
             SincronizarCatalogoDePermisos(context);
             MigrarUsuariosLegados(context, hasher);
+            SembrarEmpleadosNuevosDeRbac(context, hasher);
+            SembrarUsuariosWebDeEjemplo(context);
+
+            // Sembrado masivo integral de más de 400 datos dominicanos si faltan
+            DbMassiveSeeder.SembrarDatosSiFaltan(context);
 
             // Si ya hay sucursales y usuarios, el resto de la base de datos ya fue inicializada
             if (context.Sucursales.Any() && context.Usuarios.Any())
             {
-                SembrarEmpleadosNuevosDeRbac(context, hasher);
-                SembrarUsuariosWebDeEjemplo(context);
                 return;
             }
 
@@ -639,6 +683,9 @@ namespace Patronato.Core.Data
                     context.SaveChanges();
                 }
             }
+
+            // Sembrar catálogo extendido y datos masivos de pruebas (350+ registros)
+            DbMassiveSeeder.SembrarDatosSiFaltan(context);
         }
 
         // Un empleado de ejemplo por cada nivel nuevo de RBAC (Administrador Operativo,
@@ -673,6 +720,9 @@ namespace Patronato.Core.Data
             SembrarSiNoExiste("auditor", "Héctor Paulino", "auditoria@patronatociegos.org.do", PermisosCore.RolAuditor);
             SembrarSiNoExiste("auditor2", "Segundo Auditor", "auditor2@patronatociegos.org.do", PermisosCore.RolAuditor, "AuditorClave123");
             SembrarSiNoExiste("logistica", "Yoel Castillo", "logistica@patronatociegos.org.do", PermisosCore.RolOperadorLogistico);
+            SembrarSiNoExiste("medico", "Dra. Carmen Féliz", "oftalmologia@patronatociegos.org.do", "MedicoOftalmologo", "medico123");
+            SembrarSiNoExiste("medico.oftalmo", "Dra. Carmen Féliz (Oftalmología)", "carmen.feliz@patronatociegos.org.do", "MedicoOftalmologo", "Medico123!");
+            SembrarSiNoExiste("instructor", "Rafael Núñez", "rehabilitacion@patronatociegos.org.do", "InstructorRehabilitacion", "instructor123");
 
             context.SaveChanges();
         }

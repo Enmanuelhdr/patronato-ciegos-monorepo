@@ -45,7 +45,39 @@ namespace Patronato.Caja.Services
         private static readonly log4net.ILog Logger = log4net.LogManager.GetLogger(typeof(GatewaySocketClient));
         private static readonly UTF8Encoding Utf8SinBom = new(encoderShouldEmitUTF8Identifier: false);
         private static readonly JsonSerializerOptions JsonOpciones = new(JsonSerializerDefaults.Web);
-        private static int _stanCounter = 0;
+        private static readonly string StanFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PatronatoCaja", "stan_sequence.txt");
+        private static readonly object StanLock = new();
+        private static int _stanCounter = CargarUltimoStan();
+
+        private static int CargarUltimoStan()
+        {
+            try
+            {
+                if (File.Exists(StanFilePath) && int.TryParse(File.ReadAllText(StanFilePath), out var val))
+                    return val % 999999;
+            }
+            catch { }
+            return 0;
+        }
+
+        private static string GenerarStan()
+        {
+            lock (StanLock)
+            {
+                _stanCounter++;
+                if (_stanCounter > 999999) _stanCounter = 1;
+                try
+                {
+                    var dir = Path.GetDirectoryName(StanFilePath);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    File.WriteAllText(StanFilePath, _stanCounter.ToString());
+                }
+                catch { }
+                return _stanCounter.ToString("D6");
+            }
+        }
 
         public async Task<TransaccionResponse> EnviarAsync(string codigoTransaccion, object datos)
         {
@@ -94,8 +126,5 @@ namespace Patronato.Caja.Services
             return JsonSerializer.Deserialize<TransaccionResponse>(linea, JsonOpciones)
                 ?? throw new JsonException("Respuesta vacía del Gateway.");
         }
-
-        private static string GenerarStan() =>
-            Interlocked.Increment(ref _stanCounter).ToString("D6");
     }
 }

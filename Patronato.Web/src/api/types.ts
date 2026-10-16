@@ -268,6 +268,10 @@ export interface TransaccionCaja {
   identificacionCliente?: string | null;
   detalleLineas?: string | null;
   referenciaId?: number | null;
+  esAnulada?: boolean;
+  motivoAnulacion?: string | null;
+  anuladoPor?: string | null;
+  fechaHoraAnulacion?: string | null;
 }
 
 export interface SolicitudCita {
@@ -285,8 +289,16 @@ export interface SolicitudCita {
 
 export interface CuadreCaja {
   fecha: string;
+  fechaInicio?: string;
+  fechaFin?: string;
   cajero: string;
   cantidadTransacciones: number;
+  cantidadAnuladas?: number;
+  totalAnulado?: number;
+  fondoInicial?: number;
+  efectivoEsperadoEnCaja?: number;
+  tieneTurnoActivo?: boolean;
+  turnoId?: number | null;
   totalGeneral: number;
   porMetodo: { efectivo: number; tarjeta: number; transferencia: number };
   porConcepto: {

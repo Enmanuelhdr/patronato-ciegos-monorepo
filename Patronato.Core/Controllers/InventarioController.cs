@@ -40,7 +40,7 @@ namespace Patronato.Core.Controllers
             [FromQuery] int pagina = 1, [FromQuery] int tamanoPagina = 20)
         {
             pagina = Math.Max(1, pagina);
-            tamanoPagina = Math.Clamp(tamanoPagina, 1, 100);
+            tamanoPagina = Math.Clamp(tamanoPagina, 1, 500);
 
             var query = _context.ProductosArticulos.AsQueryable();
             if (!string.IsNullOrWhiteSpace(categoria)) query = query.Where(p => p.Categoria == categoria);

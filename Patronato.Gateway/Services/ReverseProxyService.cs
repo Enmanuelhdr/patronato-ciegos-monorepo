@@ -53,15 +53,48 @@ public class ReverseProxyService
 
             await coreResponse.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            // El cliente (navegador o frontend) cerró la pestaña o abortó la petición HTTP
+        }
+        catch (OperationCanceledException ex)
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    error = "Tiempo de espera agotado comunicándose con el Core",
+                    detalle = ex.Message
+                }));
+            }
+        }
         catch (HttpRequestException ex)
         {
-            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new
+            if (!context.Response.HasStarted)
             {
-                error = "El servicio Patronato.Core aún no está disponible en http://localhost:57141",
-                detalle = ex.Message
-            }));
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    error = "El servicio Patronato.Core aún no está disponible en http://localhost:57141",
+                    detalle = ex.Message
+                }));
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status502BadGateway;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    error = "Error al comunicarse con el Core a través del Gateway",
+                    detalle = ex.Message
+                }));
+            }
         }
     }
 }

@@ -5,9 +5,11 @@
         Height="760" Width="1220"
         MinHeight="680" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="Window_PreviewKeyDown"
         Background="#F1F5F9">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -16,62 +18,129 @@
         <!-- ========================================================= -->
         <!-- ENCABEZADO INSTITUCIONAL DE CAJA                          -->
         <!-- ========================================================= -->
-        <Border Grid.Row="0" Background="#1E3A8A" Padding="18,12">
+        <Border Grid.Row="0" Background="#1E3A8A" Padding="16,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- NIVEL 1: Identidad Institucional y Botones de Acción -->
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Identidad Visual -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Background="White" CornerRadius="8" Width="95" Height="38" Margin="0,0,12,0" Padding="3">
+                            <Image Source="/Assets/logo-pnc.png" RenderOptions.BitmapScalingMode="HighQuality" Stretch="Uniform" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="PATRONATO NACIONAL DE CIEGOS, INC." Foreground="White" FontWeight="Bold" FontSize="16" />
+                            <TextBlock Text="Terminal Operativa de Caja, Facturación POS y Arqueo" Foreground="#93C5FD" FontSize="11" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Botones de Acción -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="BtnGestionTurno" 
+                                Content="Gestionar Turno" 
+                                Height="32" Padding="12,4"
+                                Background="#0284C7" Foreground="White" 
+                                FontWeight="SemiBold" FontSize="11" 
+                                BorderThickness="0"
+                                Click="BtnGestionTurno_Click"
+                                Margin="0,0,8,0">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6" />
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                        <Button Content="Cerrar Sesión" 
+                                Height="32" Padding="12,4"
+                                Background="#DC2626" Foreground="White" 
+                                FontWeight="SemiBold" FontSize="11" 
+                                BorderThickness="0"
+                                Click="BtnCerrarSesion_Click">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6" />
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- NIVEL 2: Barra de Estado Operativa (Cajero, Sede, Turno y Hora) -->
+                <Border Grid.Row="1" Background="#0F172A" CornerRadius="8" Padding="12,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Datos del Cajero y Sede (Izquierda - Espacio Amplio y Claro) -->
+                        <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Background="#1E293B" CornerRadius="6" Padding="10,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="👤 Cajero: " Foreground="#94A3B8" FontSize="12" />
+                                    <TextBlock x:Name="TxtInfoCajero" Text="Ana Rosario" Foreground="#38BDF8" FontWeight="Bold" FontSize="12" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border x:Name="BadgeRol" Background="#0284C7" CornerRadius="6" Padding="8,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🏷️ " FontSize="11" />
+                                    <TextBlock x:Name="TxtInfoRol" Text="Cajero" Foreground="White" FontWeight="Bold" FontSize="11" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#1E293B" CornerRadius="6" Padding="10,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📍 Sede: " Foreground="#94A3B8" FontSize="12" />
+                                    <TextBlock x:Name="TxtInfoSucursal" Text="Santo Domingo" Foreground="White" FontWeight="SemiBold" FontSize="12" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+
+                        <!-- Estado del Turno y Hora (Derecha) -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border x:Name="BadgeTurno" Background="#065F46" CornerRadius="6" Padding="10,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="💼 " FontSize="11" />
+                                    <TextBlock x:Name="TxtInfoTurno" Text="Turno Activo" Foreground="White" FontWeight="Bold" FontSize="11" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#1E293B" CornerRadius="6" Padding="10,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🕒 " FontSize="11" />
+                                    <TextBlock x:Name="TxtInfoHora" Text="12:00:00 PM" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="11" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- BANNER DE ALERTA: TURNO REQUERIDO PARA OPERAR -->
+        <Border x:Name="BannerTurnoRequerido" Grid.Row="1" Background="#FEF2F2" BorderBrush="#F87171" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="12,8,12,0" Visibility="Collapsed">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <!-- Identidad Visual -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Background="#2563EB" CornerRadius="8" Width="44" Height="44" Margin="0,0,12,0">
-                        <TextBlock Text="PNC" Foreground="White" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="PATRONATO NACIONAL DE CIEGOS, INC." Foreground="White" FontWeight="Bold" FontSize="16" />
-                        <TextBlock Text="Módulo Operativo de Caja, Facturación y Arqueo" Foreground="#93C5FD" FontSize="12" />
-                    </StackPanel>
+                <TextBlock Grid.Column="0" Text="⚠️" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="CAJA BLOQUEADA: Debe abrir un turno indicando el fondo inicial en gaveta para habilitar cobros y ventas." FontWeight="Bold" Foreground="#991B1B" FontSize="13" />
+                    <TextBlock Text="De acuerdo a las normativas de auditoría de caja, no se permite procesar ventas ni recibir dinero sin un turno activo y fondo inicial registrado." Foreground="#B91C1C" FontSize="11" Margin="0,2,0,0" />
                 </StackPanel>
-
-                <!-- Estado del Cajero y Turno (Compacto y Responsivo) -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,0,14,0">
-                    <Border Background="#1E293B" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="👤 " FontSize="11" />
-                            <TextBlock x:Name="TxtInfoCajero" Text="Ana Rosario" Foreground="White" FontWeight="Bold" FontSize="11" MaxWidth="160" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
-                        </StackPanel>
-                    </Border>
-                    <Border x:Name="BadgeRol" Background="#0284C7" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="🏷️ " FontSize="11" />
-                            <TextBlock x:Name="TxtInfoRol" Text="Cajero" Foreground="White" FontWeight="Bold" FontSize="11" />
-                        </StackPanel>
-                    </Border>
-                    <Border Background="#1E293B" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="📍 " FontSize="11" />
-                            <TextBlock x:Name="TxtInfoSucursal" Text="Santo Domingo" Foreground="White" FontWeight="Bold" FontSize="11" MaxWidth="130" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Background="#1E293B" CornerRadius="6" Padding="8,5">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="🕒 " FontSize="11" />
-                            <TextBlock x:Name="TxtInfoHora" Text="12:00:00 PM" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="11" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-
-                <!-- Botón Cerrar Sesión -->
-                <Button Grid.Column="2" 
-                        Content="Cerrar Turno / Salir" 
-                        Height="34" Padding="12,4"
-                        Background="#DC2626" Foreground="White" 
-                        FontWeight="SemiBold" FontSize="12" 
-                        BorderThickness="0"
-                        Click="BtnCerrarSesion_Click"
-                        VerticalAlignment="Center">
+                <Button Grid.Column="2" Content="➕ Abrir Turno Ahora" Background="#DC2626" Foreground="White" FontWeight="Bold" FontSize="12" Padding="14,8" BorderThickness="0" Click="BtnAbrirTurno_Click" Cursor="Hand" VerticalAlignment="Center">
                     <Button.Resources>
                         <Style TargetType="Border">
                             <Setter Property="CornerRadius" Value="6" />
@@ -84,12 +153,12 @@
         <!-- ========================================================= -->
         <!-- PESTAÑAS PRINCIPALES DEL SISTEMA                          -->
         <!-- ========================================================= -->
-        <TabControl x:Name="MainTabControl" Grid.Row="1" Background="#F8FAFC" BorderThickness="0" Margin="12,8,12,6" SelectionChanged="MainTabControl_SelectionChanged">
+        <TabControl x:Name="MainTabControl" Grid.Row="2" Background="#F8FAFC" BorderThickness="0" Margin="12,8,12,6" SelectionChanged="MainTabControl_SelectionChanged">
             
             <!-- ========================================== -->
             <!-- 1. VENTA DE PRODUCTOS E INSUMOS (POS)      -->
             <!-- ========================================== -->
-            <TabItem Header="🛒 Venta de Insumos (POS)">
+            <TabItem Header="🛒 POS (F1)">
                 <Grid Margin="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1.2*" />
@@ -266,7 +335,7 @@
             <!-- ========================================== -->
             <!-- 2. MASAJES TACTO                          -->
             <!-- ========================================== -->
-            <TabItem Header="💆 Masajes TACTO">
+            <TabItem Header="💆 Masajes (F2)">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -279,7 +348,7 @@
                         <Grid>
                             <StackPanel>
                                 <TextBlock Text="Módulo TACTO - Masajes Terapéuticos por Invidentes" FontWeight="Bold" FontSize="13" Foreground="#1E3A8A" />
-                                <TextBlock Text="Cobra las sesiones realizadas por los terapeutas invidentes capacitados en el Patronato. Al cobrar, se actualiza el estado en el Core y se emite el comprobante de pago." FontSize="11" Foreground="#3B82F6" />
+                                <TextBlock Text="Cobra las sesiones realizadas por los terapeutas invidentes capacitados en el Patronato. Al registrar el cobro, se emite el comprobante oficial y se actualiza el estado de la sesión inmediatamente." FontSize="11" Foreground="#3B82F6" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <Button Content="Actualizar Pendientes"
@@ -360,7 +429,7 @@
             <!-- ========================================== -->
             <!-- 2.1. CONSULTAS OFTALMOLÓGICAS              -->
             <!-- ========================================== -->
-            <TabItem Header="👁️ Consultas Oftalmológicas">
+            <TabItem Header="👁️ Consultas (F3)">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -452,7 +521,7 @@
             <!-- ========================================== -->
             <!-- 3. ABONO A PRÉSTAMOS DE EMPRENDIMIENTO    -->
             <!-- ========================================== -->
-            <TabItem Header="💳 Abono a Préstamos">
+            <TabItem Header="💳 Préstamos (F4)">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -546,7 +615,7 @@
             <!-- ========================================== -->
             <!-- 4. DONACIONES EN VENTANILLA               -->
             <!-- ========================================== -->
-            <TabItem x:Name="TabDonaciones" Header="🎁 Donaciones">
+            <TabItem x:Name="TabDonaciones" Header="🎁 Donaciones (F5)">
                 <Grid Margin="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1.2*" />
@@ -635,7 +704,7 @@
             <!-- ========================================== -->
             <!-- 5. ARQUEO Y CIERRE DE CAJA                -->
             <!-- ========================================== -->
-            <TabItem x:Name="TabArqueoCaja" Header="📊 Arqueo y Cierre">
+            <TabItem x:Name="TabArqueoCaja" Header="📊 Arqueo (F6)">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -652,12 +721,25 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Card 1: Total Recaudado -->
+                        <!-- Card 1: Total Recaudado y Balance de Turno -->
                         <Border Grid.Column="0" Background="#1E3A8A" CornerRadius="8" Padding="14" Margin="0,0,6,0">
                             <StackPanel>
-                                <TextBlock Text="TOTAL RECAUDADO" Foreground="#93C5FD" FontSize="11" FontWeight="Bold" />
-                                <TextBlock x:Name="TxtKpiTotalGeneral" Text="RD$ 0.00" Foreground="White" FontSize="20" FontWeight="Bold" Margin="0,4,0,2" />
-                                <TextBlock x:Name="TxtKpiCantidadTx" Text="0 transacciones registradas" Foreground="#BFDBFE" FontSize="11" />
+                                <TextBlock Text="TOTAL RECAUDADO" Foreground="#93C5FD" FontSize="10" FontWeight="Bold" />
+                                <TextBlock x:Name="TxtKpiTotalGeneral" Text="RD$ 0.00" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,2,0,2" />
+                                <TextBlock x:Name="TxtKpiCantidadTx" Text="0 transacciones registradas" Foreground="#BFDBFE" FontSize="10" Margin="0,0,0,4" />
+                                <Separator Background="#3B82F6" Margin="0,2,0,4" />
+                                <Grid Margin="0,1">
+                                    <TextBlock Text="Fondo Inicial:" FontSize="10" Foreground="#93C5FD" />
+                                    <TextBlock x:Name="TxtKpiFondoInicial" Text="RD$ 0.00" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" Foreground="White" />
+                                </Grid>
+                                <Grid Margin="0,1">
+                                    <TextBlock Text="Efectivo Esperado:" FontSize="10" Foreground="#93C5FD" />
+                                    <TextBlock x:Name="TxtKpiEfectivoEsperado" Text="RD$ 0.00" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#38BDF8" />
+                                </Grid>
+                                <Grid Margin="0,1">
+                                    <TextBlock Text="Total Anulado:" FontSize="10" Foreground="#FCA5A5" />
+                                    <TextBlock x:Name="TxtKpiTotalAnulado" Text="RD$ 0.00" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#FECACA" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -693,6 +775,10 @@
                                     <TextBlock x:Name="TxtKpiMasajes" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
                                 </Grid>
                                 <Grid Margin="0,2,0,0">
+                                    <TextBlock Text="Consultas Médicas:" FontSize="11" Foreground="#334155" />
+                                    <TextBlock x:Name="TxtKpiConsultas" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid Margin="0,2,0,0">
                                     <TextBlock Text="Abonos Préstamos:" FontSize="11" Foreground="#334155" />
                                     <TextBlock x:Name="TxtKpiPrestamos" Text="RD$ 0.00" FontSize="11" FontWeight="Bold" HorizontalAlignment="Right" />
                                 </Grid>
@@ -703,17 +789,21 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Card 4: Acciones de Arqueo -->
+                        <!-- Card 4: Acciones de Arqueo y Cierre -->
                         <Border Grid.Column="3" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="6,0,0,0">
                             <StackPanel VerticalAlignment="Center">
                                 <Button Content="🔄 Actualizar Arqueo" 
                                         Style="{StaticResource ModernButtonStyle}" 
-                                        Background="#0284C7" Margin="0,0,0,8" 
+                                        Background="#0284C7" Margin="0,0,0,6" 
                                         Click="BtnActualizarArqueo_Click" />
-                                <Button Content="🖨️ Emitir Cierre de Caja" 
+                                <Button Content="💵 Cierre de Turno y Conteo" 
                                         Style="{StaticResource ModernButtonStyle}" 
-                                        Background="#0F172A" 
+                                        Background="#0F172A" Margin="0,0,0,6"
                                         Click="BtnImprimirCierre_Click" />
+                                <Button Content="🔓 Abrir Turno" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#065F46" 
+                                        Click="BtnAbrirTurno_Click" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -732,21 +822,21 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <TextBlock Grid.Row="2" Text="* Este reporte refleja en vivo las transacciones auditadas en la base de datos de Patronato.Core." FontSize="11" Foreground="#64748B" Margin="0,8,0,0" />
+                    <TextBlock Grid.Row="2" Text="* Este reporte refleja en vivo las transacciones auditadas en el sistema institucional." FontSize="11" Foreground="#64748B" Margin="0,8,0,0" />
                 </Grid>
             </TabItem>
 
             <!-- ========================================== -->
             <!-- 6. HISTORIAL Y REIMPRESIÓN DE RECIBOS     -->
             <!-- ========================================== -->
-            <TabItem x:Name="TabRecibos" Header="🧾 Recibos">
+            <TabItem x:Name="TabRecibos" Header="🧾 Recibos (F7)">
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <!-- Barra de Búsqueda -->
+                    <!-- Barra de Búsqueda y Acciones -->
                     <Border Grid.Row="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -756,24 +846,61 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Buscar por Recibo o Cliente:" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <TextBox x:Name="TxtBuscarRecibo" Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}" TextChanged="TxtBuscarRecibo_TextChanged" />
-                            <Button Grid.Column="2" 
-                                    Content="Ver / Reimprimir Recibo" 
-                                    Style="{StaticResource ModernButtonStyle}" 
-                                    Background="#0284C7" Margin="10,0,0,0" 
-                                    Click="BtnReimprimirRecibo_Click" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="10,0,0,0">
+                                <Button Content="Ver / Reimprimir Recibo" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#0284C7" Margin="0,0,8,0" 
+                                        Click="BtnReimprimirRecibo_Click" />
+                                <Button Content="🚫 Anular Recibo" 
+                                        Style="{StaticResource ModernButtonStyle}" 
+                                        Background="#DC2626" 
+                                        Click="BtnAnularRecibo_Click" />
+                            </StackPanel>
                         </Grid>
                     </Border>
 
                     <!-- Grilla de Recibos -->
                     <DataGrid x:Name="GridRecibos" Grid.Row="1" MouseDoubleClick="GridRecibos_MouseDoubleClick">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="No. Recibo" Binding="{Binding NumeroRecibo}" Width="160" />
-                            <DataGridTextColumn Header="Fecha / Hora" Binding="{Binding FechaHora, StringFormat=dd/MM/yyyy hh:mm tt}" Width="150" />
-                            <DataGridTextColumn Header="Operación" Binding="{Binding TipoTransaccion}" Width="130" />
+                            <DataGridTextColumn Header="No. Recibo" Binding="{Binding NumeroRecibo}" Width="150" />
+                            <DataGridTextColumn Header="Fecha / Hora" Binding="{Binding FechaHora, StringFormat=dd/MM/yyyy hh:mm tt}" Width="145" />
+                            <DataGridTextColumn Header="Operación" Binding="{Binding TipoTransaccion}" Width="120" />
                             <DataGridTextColumn Header="Cliente / Beneficiario" Binding="{Binding ClienteOBeneficiario}" Width="*" />
-                            <DataGridTextColumn Header="Total (RD$)" Binding="{Binding MontoTotal, StringFormat=N2}" Width="100" />
-                            <DataGridTextColumn Header="Método" Binding="{Binding MetodoPago}" Width="90" />
-                            <DataGridTextColumn Header="Cajero" Binding="{Binding Cajero}" Width="120" />
+                            <DataGridTextColumn Header="Total (RD$)" Binding="{Binding MontoTotal, StringFormat=N2}" Width="95" />
+                            <DataGridTextColumn Header="Método" Binding="{Binding MetodoPago}" Width="85" />
+                            <DataGridTextColumn Header="Cajero" Binding="{Binding Cajero}" Width="100" />
+                            <DataGridTemplateColumn Header="Estado" Width="100">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#ECFDF5" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding EsAnulada}" Value="True">
+                                                            <Setter Property="Background" Value="#FEE2E2" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock FontWeight="Bold" FontSize="10">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Cobrado" />
+                                                        <Setter Property="Foreground" Value="#047857" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding EsAnulada}" Value="True">
+                                                                <Setter Property="Text" Value="ANULADA" />
+                                                                <Setter Property="Foreground" Value="#DC2626" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
@@ -784,24 +911,28 @@
         <!-- ========================================================= -->
         <!-- BARRA DE ESTADO INFERIOR                                  -->
         <!-- ========================================================= -->
-        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="14,6">
+        <Border Grid.Row="3" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="14,6">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TxtEstadoGlobal" Text="Sistema listo para operar." FontSize="11" Foreground="#475569" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtEstadoGlobal" Text="Sistema listo para operar." FontSize="11" Foreground="#475569" VerticalAlignment="Center" Margin="0,0,14,0" />
+
+                <!-- Guía rápida de atajos de teclado ergonómicos -->
+                <TextBlock Grid.Column="1" Text="⌨️ F1:POS • F2:Masajes • F3:Consultas • F4:Préstamos • F5:Donaciones • F6:Arqueo • F7:Recibos • F12:Cobrar • Esc:Limpiar" FontSize="10" Foreground="#64748B" VerticalAlignment="Center" HorizontalAlignment="Left" />
 
                 <!-- Visible solo mientras haya cobros encolados sin confirmar con el Gateway -->
-                <Border x:Name="BadgePendientes" Grid.Column="1" Background="#FEF3C7" CornerRadius="10" Padding="8,3" Margin="0,0,14,0" Visibility="Collapsed">
+                <Border x:Name="BadgePendientes" Grid.Column="2" Background="#FEF3C7" CornerRadius="10" Padding="8,3" Margin="0,0,14,0" Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="⏳ " FontSize="11" />
                         <TextBlock x:Name="TxtPendientes" Text="0 pendientes de sincronizar" FontSize="11" FontWeight="SemiBold" Foreground="#92400E" />
                     </StackPanel>
                 </Border>
 
-                <TextBlock Grid.Column="2" Text="Patronato Nacional de Ciegos • v1.0.0 (WPF .NET 10)" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="Patronato Nacional de Ciegos • v1.0.0 (WPF .NET 10)" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" />
             </Grid>
         </Border>
     </Grid>

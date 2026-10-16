@@ -45,8 +45,11 @@ namespace Patronato.Caja.Services
             sb.AppendLine("--------------------------------------------------");
             sb.AppendLine($"TOTAL A PAGAR:        RD$ {transaccion.MontoTotal,12:N2}");
             sb.AppendLine($"MÉTODO DE PAGO:       {transaccion.MetodoPago,16}");
-            sb.AppendLine($"MONTO RECIBIDO:       RD$ {transaccion.MontoRecibido,12:N2}");
-            sb.AppendLine($"DEVUELTA / CAMBIO:    RD$ {transaccion.Devuelta,12:N2}");
+            if (string.Equals(transaccion.MetodoPago, "Efectivo", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine($"MONTO RECIBIDO:       RD$ {transaccion.MontoRecibido,12:N2}");
+                sb.AppendLine($"DEVUELTA / CAMBIO:    RD$ {transaccion.Devuelta,12:N2}");
+            }
             sb.AppendLine("==================================================");
             sb.AppendLine("   \"La ceguera no te impide ver con el corazón\"  ");
             sb.AppendLine(" ¡Gracias por su valioso apoyo a nuestra misión!  ");
@@ -78,6 +81,7 @@ namespace Patronato.Caja.Services
         {
             "VentaProductos" => "VENTA DE PRODUCTOS E INSUMOS",
             "MasajeTacto" => "SESIÓN DE MASAJE TACTO",
+            "ConsultaOftalmologica" => "CONSULTA OFTALMOLÓGICA",
             "AbonoPrestamo" => "ABONO A PRÉSTAMO DE EMPRENDIMIENTO",
             "Donacion" => "RECEPCIÓN DE DONACIÓN",
             _ => tipo

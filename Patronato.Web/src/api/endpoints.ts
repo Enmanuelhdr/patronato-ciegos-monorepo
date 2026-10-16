@@ -33,9 +33,7 @@ import type {
 
 // ---------- Autenticación ----------
 export const loginApi = (nombreUsuario: string, password: string) =>
-  api.post<LoginResponse>(
-    `/api/Usuarios/login?nombreUsuario=${encodeURIComponent(nombreUsuario)}&password=${encodeURIComponent(password)}`
-  );
+  api.post<LoginResponse>("/api/Usuarios/login", { nombreUsuario, password });
 
 export const cambiarPasswordPropia = (passwordActual: string, passwordNueva: string) =>
   api.post<{ mensaje: string }>("/api/Usuarios/cambiar-password", { passwordActual, passwordNueva });
@@ -307,16 +305,79 @@ export const crearOrden = (payload: CrearOrdenPayload) =>
   api.post<{ mensaje: string; orden: OrdenPedidoCaja }>("/api/recepcion/ordenes", payload);
 
 // ---------- Reportes de Caja (solo lectura, visibilidad administrativa) ----------
-export const getCuadreCaja = (fecha?: string, cajero?: string) => {
+export const getCuadreCaja = (fecha?: string, cajero?: string, fechaInicio?: string, fechaFin?: string) => {
   const params = new URLSearchParams();
   if (fecha) params.set("fecha", fecha);
+  if (fechaInicio) params.set("fechaInicio", fechaInicio);
+  if (fechaFin) params.set("fechaFin", fechaFin);
   if (cajero) params.set("cajero", cajero);
   return api.get<CuadreCaja>(`/api/caja/cuadre-caja${params.toString() ? `?${params}` : ""}`);
 };
 
-export const getTransacciones = (fecha?: string, cajero?: string) => {
+export const getTransacciones = (fecha?: string, cajero?: string, fechaInicio?: string, fechaFin?: string) => {
   const params = new URLSearchParams();
   if (fecha) params.set("fecha", fecha);
+  if (fechaInicio) params.set("fechaInicio", fechaInicio);
+  if (fechaFin) params.set("fechaFin", fechaFin);
   if (cajero) params.set("cajero", cajero);
   return api.get<TransaccionCaja[]>(`/api/caja/transacciones${params.toString() ? `?${params}` : ""}`);
 };
+
+// ---------- Portal del Paciente / Beneficiario ----------
+export interface RegistroPacientePayload {
+  nombreCompleto: string;
+  correo: string;
+  telefono: string;
+  password: string;
+  cedula?: string;
+}
+
+export interface RegistroPacienteRespuesta {
+  mensaje: string;
+  correo: string;
+  codigoVerificacion: string;
+  nombre: string;
+}
+
+export interface SesionPaciente {
+  id: number;
+  nombre: string;
+  correo: string;
+  telefono: string;
+  cedula?: string;
+  token: string;
+}
+
+export interface LoginPacienteRespuesta extends Partial<SesionPaciente> {
+  requiereVerificacion?: boolean;
+  mensaje?: string;
+  correo?: string;
+  codigoVerificacion?: string;
+}
+
+export const registrarPaciente = (payload: RegistroPacientePayload) =>
+  api.post<RegistroPacienteRespuesta>("/api/portal/registro", payload);
+
+export const verificarCorreoPaciente = (correo: string, codigo: string) =>
+  api.post<{ exito: boolean; mensaje: string; correo: string }>("/api/portal/verificar-correo", { correo, codigo });
+
+export const reenviarCodigoPaciente = (correo: string) =>
+  api.post<{ mensaje: string; correo: string; correoEnviado?: boolean }>("/api/portal/reenviar-codigo", { correo });
+
+export const loginPaciente = (correo: string, password: string) =>
+  api.post<LoginPacienteRespuesta>("/api/portal/login", { correo, password });
+
+export const getMisCitasPaciente = (correo: string) =>
+  api.get<SolicitudCita[]>(`/api/portal/mis-citas?correo=${encodeURIComponent(correo)}`);
+
+export interface SolicitarCitaPacientePayload {
+  correo: string;
+  tipoServicio: number;
+  sedePreferida: number;
+  fechaPreferida: string;
+  comentario?: string;
+}
+
+export const solicitarCitaPaciente = (payload: SolicitarCitaPacientePayload) =>
+  api.post<{ mensaje: string; cita: SolicitudCita }>("/api/portal/solicitar-cita", payload);
+

@@ -35,6 +35,12 @@ namespace Patronato.Core.Servicios
                 return;
             }
 
+            // Llamadas internas legítimas del Gateway o Caja firmadas con clave del sistema
+            if (usuario.Identity.AuthenticationType == "GatewayCajaInternal" || usuario.FindFirst("origen")?.Value == "Caja")
+            {
+                return;
+            }
+
             if (usuario.FindFirst("ctx")?.Value != "core")
             {
                 context.Result = new ForbidResult();

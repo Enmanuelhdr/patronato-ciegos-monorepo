@@ -18,7 +18,20 @@ namespace Patronato.Caja.Views
 
         private void CargarDatos()
         {
-            TxtNumeroRecibo.Text = string.IsNullOrWhiteSpace(_transaccion.NumeroRecibo) ? $"REC-{_transaccion.Id:D6}" : _transaccion.NumeroRecibo;
+            if (_transaccion.EsAnulada)
+            {
+                BannerAnulado.Visibility = Visibility.Visible;
+                TxtInfoAnulacion.Text = $"Anulado por: {_transaccion.AnuladoPor ?? "Supervisor"} el {_transaccion.FechaHoraAnulacion:dd/MM/yyyy hh:mm tt}";
+                TxtMotivoAnulacionTicket.Text = $"Motivo: {_transaccion.MotivoAnulacion ?? "Sin motivo registrado"}";
+                TxtNumeroRecibo.Text = $"{_transaccion.NumeroRecibo} (ANULADO)";
+                TxtNumeroRecibo.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 38, 38));
+            }
+            else
+            {
+                BannerAnulado.Visibility = Visibility.Collapsed;
+                TxtNumeroRecibo.Text = string.IsNullOrWhiteSpace(_transaccion.NumeroRecibo) ? $"REC-{_transaccion.Id:D6}" : _transaccion.NumeroRecibo;
+            }
+
             TxtFechaHora.Text = _transaccion.FechaHora.ToString("dd/MM/yyyy hh:mm tt");
             TxtSucursal.Text = string.IsNullOrWhiteSpace(_transaccion.Sucursal) ? "Sede Central Santo Domingo" : _transaccion.Sucursal;
             TxtCajero.Text = string.IsNullOrWhiteSpace(_transaccion.Cajero) ? "Caja Principal" : _transaccion.Cajero;
@@ -85,6 +98,7 @@ namespace Patronato.Caja.Views
         {
             "VentaProductos" => "VENTA DE PRODUCTOS E INSUMOS",
             "MasajeTacto" => "SESIÓN DE MASAJE TACTO",
+            "ConsultaOftalmologica" => "CONSULTA OFTALMOLÓGICA",
             "AbonoPrestamo" => "ABONO A PRÉSTAMO DE EMPRENDIMIENTO",
             "Donacion" => "RECEPCIÓN DE DONACIÓN",
             _ => tipo?.ToUpperInvariant() ?? "COMPROBANTE DE PAGO"

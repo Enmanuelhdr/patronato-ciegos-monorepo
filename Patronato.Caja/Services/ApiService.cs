@@ -78,12 +78,30 @@ namespace Patronato.Caja.Services
             return (success, respuesta.Mensaje, recibo);
         }
 
-        // Toda consulta de catálogo/listado viene como un array en Datos.
+        // Toda consulta de catálogo/listado viene como un array en Datos, o como objeto paginado (items/Items/data).
         private static List<T> DeserializarLista<T>(TransaccionResponse respuesta)
         {
-            if (respuesta.CodigoRespuesta == "00" && respuesta.Datos is JsonElement datosEl && datosEl.ValueKind == JsonValueKind.Array)
+            if (respuesta.CodigoRespuesta == "00" && respuesta.Datos is JsonElement datosEl)
             {
-                return JsonSerializer.Deserialize<List<T>>(datosEl.GetRawText(), _jsonOptions) ?? new List<T>();
+                if (datosEl.ValueKind == JsonValueKind.Array)
+                {
+                    return JsonSerializer.Deserialize<List<T>>(datosEl.GetRawText(), _jsonOptions) ?? new List<T>();
+                }
+                if (datosEl.ValueKind == JsonValueKind.Object)
+                {
+                    if (datosEl.TryGetProperty("items", out var itemsEl) && itemsEl.ValueKind == JsonValueKind.Array)
+                    {
+                        return JsonSerializer.Deserialize<List<T>>(itemsEl.GetRawText(), _jsonOptions) ?? new List<T>();
+                    }
+                    if (datosEl.TryGetProperty("Items", out var itemsEl2) && itemsEl2.ValueKind == JsonValueKind.Array)
+                    {
+                        return JsonSerializer.Deserialize<List<T>>(itemsEl2.GetRawText(), _jsonOptions) ?? new List<T>();
+                    }
+                    if (datosEl.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Array)
+                    {
+                        return JsonSerializer.Deserialize<List<T>>(dataEl.GetRawText(), _jsonOptions) ?? new List<T>();
+                    }
+                }
             }
             return new List<T>();
         }
@@ -235,20 +253,49 @@ namespace Patronato.Caja.Services
             {
                 var respuesta = await _gateway.EnviarAsync("INVENTARIO_CONSULTAR", new { });
                 var lista = DeserializarLista<ProductoItem>(respuesta);
-                _cacheProductos = lista;
-                _ajustesStockOffline.Clear(); // el Core vuelve a ser la fuente de verdad del stock
-                SinConexionGateway = false;
-                return lista;
+                if (lista.Count > 0)
+                {
+                    _cacheProductos = lista;
+                    _ajustesStockOffline.Clear(); // el Core vuelve a ser la fuente de verdad del stock
+                    SinConexionGateway = false;
+                    return lista;
+                }
+
+                if (_cacheProductos != null && _cacheProductos.Count > 0)
+                {
+                    return AplicarAjustesStockOffline(_cacheProductos);
+                }
+
+                var catalogoBase = ObtenerCatalogoBaseContingencia();
+                _cacheProductos = catalogoBase;
+                return catalogoBase;
             }
             catch (GatewayNoDisponibleException)
             {
                 SinConexionGateway = true;
-                return AplicarAjustesStockOffline(_cacheProductos);
+                return AplicarAjustesStockOffline(_cacheProductos ?? ObtenerCatalogoBaseContingencia());
             }
             catch
             {
-                return AplicarAjustesStockOffline(_cacheProductos);
+                return AplicarAjustesStockOffline(_cacheProductos ?? ObtenerCatalogoBaseContingencia());
             }
+        }
+
+        private static List<ProductoItem> ObtenerCatalogoBaseContingencia()
+        {
+            return new List<ProductoItem>
+            {
+                new() { Id = 1, Codigo = "ART-001", Nombre = "Bastón Blanco Plegable 4 Tramos", Categoria = "Movilidad", PrecioVenta = 650.00m, StockDisponible = 45 },
+                new() { Id = 2, Codigo = "ART-002", Nombre = "Regleta y Punzón de Bolsillo Braille", Categoria = "Educación", PrecioVenta = 350.00m, StockDisponible = 60 },
+                new() { Id = 3, Codigo = "ART-003", Nombre = "Trapeador Ecológico PNC Hilo Reciclado", Categoria = "Limpieza", PrecioVenta = 180.00m, StockDisponible = 150 },
+                new() { Id = 4, Codigo = "ART-004", Nombre = "Desinfectante Biodegradable Galón", Categoria = "Limpieza", PrecioVenta = 150.00m, StockDisponible = 80 },
+                new() { Id = 5, Codigo = "ART-005", Nombre = "Ábaco Crammer para Cálculo Matemático", Categoria = "Educación", PrecioVenta = 450.00m, StockDisponible = 30 },
+                new() { Id = 6, Codigo = "ART-006", Nombre = "Resma Papel Cartulina Braille 140g", Categoria = "Educación", PrecioVenta = 400.00m, StockDisponible = 55 },
+                new() { Id = 7, Codigo = "ART-007", Nombre = "Reloj Parlante Digital en Español", Categoria = "Tiflotecnología", PrecioVenta = 850.00m, StockDisponible = 25 },
+                new() { Id = 8, Codigo = "ART-008", Nombre = "Cesta Artesanal en Macramé", Categoria = "Artesanías", PrecioVenta = 650.00m, StockDisponible = 20 },
+                new() { Id = 9, Codigo = "ART-009", Nombre = "Cojín Terapéutico Aromático", Categoria = "Bienestar", PrecioVenta = 450.00m, StockDisponible = 35 },
+                new() { Id = 10, Codigo = "ART-010", Nombre = "Calculadora Parlante de Sobremesa", Categoria = "Tiflotecnología", PrecioVenta = 1200.00m, StockDisponible = 15 }
+            };
         }
 
         private static List<ProductoItem> AplicarAjustesStockOffline(List<ProductoItem>? catalogoBase)
@@ -697,6 +744,24 @@ namespace Patronato.Caja.Services
             catch (GatewayNoDisponibleException)
             {
                 SinConexionGateway = true;
+                var turno = OfflineQueueService.ObtenerTurnoOfflineActivo();
+                if (turno != null)
+                {
+                    return new CuadreCajaDto
+                    {
+                        Fecha = (fecha ?? DateTime.Today).ToString("yyyy-MM-dd"),
+                        Cajero = cajero ?? turno.Cajero,
+                        FondoInicial = turno.FondoInicial,
+                        EfectivoEsperadoEnCaja = turno.EfectivoEsperado,
+                        TotalGeneral = turno.TotalGeneralVentas,
+                        PorMetodo = new CuadreMetodoDto
+                        {
+                            Efectivo = turno.TotalVentasEfectivo,
+                            Tarjeta = turno.TotalVentasTarjeta,
+                            Transferencia = turno.TotalVentasTransferencia
+                        }
+                    };
+                }
                 return null;
             }
             catch
@@ -795,9 +860,19 @@ namespace Patronato.Caja.Services
                 {
                     var respuesta = await _gateway.EnviarAsync(item.Codigo, item.Datos);
                     SinConexionGateway = false;
-                    OfflineQueueService.QuitarPrimero();
-                    exitosas++;
-                    Logger.Info($"Sincronizada con el Gateway la transacción {item.Codigo} ('{item.NumeroReciboProvisional}') -> {respuesta.CodigoRespuesta} (quedan {OfflineQueueService.CantidadPendientes} pendiente(s)).");
+
+                    if (respuesta.CodigoRespuesta is "00" or "01")
+                    {
+                        OfflineQueueService.QuitarPrimero();
+                        exitosas++;
+                        Logger.Info($"Sincronizada con el Gateway la transacción {item.Codigo} ('{item.NumeroReciboProvisional}') -> {respuesta.CodigoRespuesta} (quedan {OfflineQueueService.CantidadPendientes} pendiente(s)).");
+                    }
+                    else
+                    {
+                        // Rechazo de negocio (05, 96, etc.): NO descartar en silencio ni contar como exitosa
+                        Logger.Error($"Rechazo definitivo del Gateway/Core para transacción {item.Codigo} ('{item.NumeroReciboProvisional}'): {respuesta.CodigoRespuesta} - {respuesta.Mensaje}");
+                        OfflineQueueService.ArchivarRechazado(item, respuesta.Mensaje);
+                    }
                 }
                 catch (GatewayNoDisponibleException)
                 {
@@ -807,6 +882,241 @@ namespace Patronato.Caja.Services
             }
 
             return exitosas;
+        }
+
+        // ==========================================
+        // 9. TURNOS DE CAJA (APERTURA, CIERRE, CONTEO) Y ANULACIONES
+        // ==========================================
+        public async Task<TurnoActivoResponseDto?> GetTurnoActivoAsync(string? cajero = null, string? sucursal = null)
+        {
+            var cajeroActual = cajero ?? SessionManager.CurrentSession?.Nombre ?? "Caja Principal";
+            var sucursalActual = sucursal ?? SessionManager.CurrentSession?.SucursalNombre ?? "Sede Central";
+
+            try
+            {
+                var datos = new { cajero = cajeroActual, sucursal = sucursalActual };
+                var respuesta = await _gateway.EnviarAsync("TURNO_ACTIVO_CONSULTAR", datos);
+                SinConexionGateway = false;
+
+                if (respuesta.CodigoRespuesta == "00" && respuesta.Datos is JsonElement datosEl && datosEl.ValueKind == JsonValueKind.Object)
+                {
+                    var res = JsonSerializer.Deserialize<TurnoActivoResponseDto>(datosEl.GetRawText(), _jsonOptions);
+                    if (res != null && res.TieneTurnoActivo && res.Turno != null)
+                    {
+                        OfflineQueueService.GuardarTurnoOffline(res.Turno);
+                    }
+                    return res;
+                }
+                return null;
+            }
+            catch (GatewayNoDisponibleException)
+            {
+                SinConexionGateway = true;
+                var turnoOffline = OfflineQueueService.ObtenerTurnoOfflineActivo();
+                if (turnoOffline != null)
+                {
+                    return new TurnoActivoResponseDto
+                    {
+                        TieneTurnoActivo = true,
+                        Mensaje = "Turno activo en modo contingencia (sin conexión)",
+                        Turno = turnoOffline
+                    };
+                }
+                return new TurnoActivoResponseDto
+                {
+                    TieneTurnoActivo = false,
+                    Mensaje = "Sin conexión con el Gateway y no hay turno activo registrado localmente",
+                    Turno = null
+                };
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error al consultar turno activo.", ex);
+                var turnoOffline = OfflineQueueService.ObtenerTurnoOfflineActivo();
+                if (turnoOffline != null)
+                {
+                    return new TurnoActivoResponseDto
+                    {
+                        TieneTurnoActivo = true,
+                        Mensaje = "Turno activo en modo contingencia (error comunicación)",
+                        Turno = turnoOffline
+                    };
+                }
+                return null;
+            }
+        }
+
+        public async Task<(bool Success, string Message, TurnoCajaDto? Turno)> AbrirTurnoAsync(decimal fondoInicial, string? observaciones = null)
+        {
+            var cajero = SessionManager.CurrentSession?.Nombre ?? "Caja Principal";
+            var sucursal = SessionManager.CurrentSession?.SucursalNombre ?? "Sede Central";
+
+            var datos = new
+            {
+                fondoInicial,
+                cajero,
+                sucursal,
+                observaciones
+            };
+
+            try
+            {
+                var respuesta = await _gateway.EnviarAsync("TURNO_ABRIR", datos);
+                SinConexionGateway = false;
+                Logger.Info($"Apertura de turno: cajero='{cajero}' fondo={fondoInicial:F2} -> {respuesta.CodigoRespuesta}.");
+
+                bool success = respuesta.CodigoRespuesta is "00" or "01";
+                TurnoCajaDto? turno = null;
+                if (respuesta.Datos is JsonElement datosEl && datosEl.ValueKind == JsonValueKind.Object &&
+                    datosEl.TryGetProperty("turno", out var turnoEl))
+                {
+                    turno = JsonSerializer.Deserialize<TurnoCajaDto>(turnoEl.GetRawText(), _jsonOptions);
+                    if (turno != null)
+                    {
+                        OfflineQueueService.GuardarTurnoOffline(turno);
+                    }
+                }
+
+                return (success, respuesta.Mensaje, turno);
+            }
+            catch (GatewayNoDisponibleException ex)
+            {
+                SinConexionGateway = true;
+
+                int idOffline = OfflineQueueService.GenerarIdTurnoOffline();
+                var turnoOffline = new TurnoCajaDto
+                {
+                    Id = idOffline,
+                    Cajero = cajero,
+                    Sucursal = sucursal,
+                    FechaHoraApertura = DateTime.Now,
+                    FondoInicial = fondoInicial,
+                    EfectivoEsperado = fondoInicial,
+                    TotalVentasEfectivo = 0,
+                    TotalVentasTarjeta = 0,
+                    TotalVentasTransferencia = 0,
+                    TotalGeneralVentas = 0,
+                    Estado = "Abierto",
+                    ObservacionesApertura = string.IsNullOrWhiteSpace(observaciones)
+                        ? "Apertura en modo contingencia (sin conexión)"
+                        : $"{observaciones} [Modo sin conexión]"
+                };
+
+                OfflineQueueService.GuardarTurnoOffline(turnoOffline);
+                OfflineQueueService.Encolar("TURNO_ABRIR", datos, $"TRN-{Math.Abs(idOffline):0000}");
+                Logger.Warn($"Gateway no disponible: turno #{idOffline} abierto localmente con fondo RD$ {fondoInicial:N2}.", ex);
+
+                return (true, $"Sin conexión con el Gateway: Turno de caja abierto en modo contingencia con fondo inicial de RD$ {fondoInicial:N2}. Puede operar normalmente.", turnoOffline);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error al abrir turno.", ex);
+                return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
+            }
+        }
+
+        public async Task<(bool Success, string Message, TurnoCajaDto? Turno)> CerrarTurnoAsync(
+            int turnoId, 
+            decimal efectivoContado, 
+            string desgloseDenominacionesJson, 
+            string? observaciones = null,
+            decimal? montoEntregadoBoveda = null,
+            decimal? fondoRemanenteCaja = null,
+            string? destinoFondos = null)
+        {
+            var datos = new
+            {
+                turnoId,
+                efectivoContado,
+                desgloseDenominacionesJson,
+                observacionesCierre = observaciones,
+                observaciones,
+                montoEntregadoBoveda,
+                fondoRemanenteCaja,
+                destinoFondos
+            };
+
+            // Si es un turno de contingencia local / offline
+            if (turnoId < 0)
+            {
+                var turnoCerradoOffline = OfflineQueueService.CerrarTurnoOffline(
+                    turnoId,
+                    efectivoContado,
+                    desgloseDenominacionesJson,
+                    observaciones,
+                    montoEntregadoBoveda,
+                    fondoRemanenteCaja,
+                    destinoFondos);
+
+                OfflineQueueService.Encolar("TURNO_CERRAR", datos, $"CIE-{Math.Abs(turnoId):0000}");
+                _ = Task.Run(async () => await SincronizarPendientesAsync());
+                return (true, $"Turno de contingencia #{Math.Abs(turnoId):0000} cerrado y arqueado localmente.", turnoCerradoOffline);
+            }
+
+            try
+            {
+                var respuesta = await _gateway.EnviarAsync("TURNO_CERRAR", datos);
+                SinConexionGateway = false;
+                Logger.Info($"Cierre de turno #{turnoId}: efectivo={efectivoContado:F2} -> {respuesta.CodigoRespuesta}.");
+
+                bool success = respuesta.CodigoRespuesta is "00" or "01";
+                TurnoCajaDto? turno = null;
+                if (respuesta.Datos is JsonElement datosEl && datosEl.ValueKind == JsonValueKind.Object &&
+                    datosEl.TryGetProperty("turno", out var turnoEl))
+                {
+                    turno = JsonSerializer.Deserialize<TurnoCajaDto>(turnoEl.GetRawText(), _jsonOptions);
+                }
+
+                OfflineQueueService.LimpiarTurnoOffline();
+                return (success, respuesta.Mensaje, turno);
+            }
+            catch (GatewayNoDisponibleException ex)
+            {
+                SinConexionGateway = true;
+
+                var turnoCerradoOffline = OfflineQueueService.CerrarTurnoOffline(
+                    turnoId,
+                    efectivoContado,
+                    desgloseDenominacionesJson,
+                    observaciones,
+                    montoEntregadoBoveda,
+                    fondoRemanenteCaja,
+                    destinoFondos);
+
+                OfflineQueueService.Encolar("TURNO_CERRAR", datos, $"CIE-{Math.Abs(turnoId):0000}");
+                Logger.Warn($"Gateway no disponible: cierre de turno #{turnoId} encolado localmente. Efectivo contado: RD$ {efectivoContado:N2}.", ex);
+
+                return (true, $"Sin conexión con el Gateway: Turno cerrado y arqueado localmente. La información se sincronizará automáticamente cuando regrese la conexión.", turnoCerradoOffline);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error al cerrar turno #{turnoId}.", ex);
+                return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
+            }
+        }
+
+        public async Task<(bool Success, string Message, TransaccionCajaDto? Recibo)> AnularTransaccionAsync(int transaccionId, string usuarioSupervisor, string passwordSupervisor, string motivo)
+        {
+            var datos = new
+            {
+                id = transaccionId,
+                usuarioSupervisor,
+                passwordSupervisor,
+                motivo
+            };
+
+            try
+            {
+                var respuesta = await _gateway.EnviarAsync("TRANSACCION_ANULAR", datos);
+                SinConexionGateway = false;
+                Logger.Info($"Anulación de transacción #{transaccionId} por supervisor '{usuarioSupervisor}' -> {respuesta.CodigoRespuesta}.");
+                return TraducirRespuestaGateway(respuesta);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error al anular transacción #{transaccionId}.", ex);
+                return (false, $"Error al comunicar con el Gateway: {ex.Message}", null);
+            }
         }
     }
 }

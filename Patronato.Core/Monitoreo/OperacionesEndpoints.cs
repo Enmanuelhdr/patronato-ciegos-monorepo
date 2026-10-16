@@ -159,11 +159,15 @@ namespace Patronato.Core.Monitoreo
                 if (await EsRolRestringido(db, rol.Id))
                     return Results.Json(new { mensaje = $"El rol '{rol.Nombre}' (SuperAdmin/IT) no se puede asignar desde este panel de soporte. Usa 'Usuarios del Core' en la Web, con tu propia sesión." }, statusCode: 403);
 
+                var nombreUsuarioLimpio = body.NombreUsuario.Trim();
+                if (await db.Usuarios.AnyAsync(u => u.NombreUsuario.ToLower() == nombreUsuarioLimpio.ToLower()))
+                    return Results.Json(new { mensaje = $"El nombre de usuario '{nombreUsuarioLimpio}' ya está registrado." }, statusCode: 400);
+
                 var usuario = new Usuario
                 {
-                    NombreCompleto = body.NombreCompleto,
-                    NombreUsuario = body.NombreUsuario,
-                    Correo = body.Correo,
+                    NombreCompleto = body.NombreCompleto.Trim(),
+                    NombreUsuario = nombreUsuarioLimpio,
+                    Correo = body.Correo?.Trim() ?? string.Empty,
                     RoleId = rol.Id,
                     SucursalId = body.SucursalId,
                     EstadoCuenta = EstadoCuentaCore.Activo,
@@ -183,8 +187,15 @@ namespace Patronato.Core.Monitoreo
                 var usuario = await db.Usuarios.FindAsync(id);
                 if (usuario == null) return Results.Json(new { mensaje = "Usuario no encontrado." }, statusCode: 404);
 
-                usuario.NombreCompleto = body.NombreCompleto;
-                usuario.Correo = body.Correo;
+                if (!string.IsNullOrWhiteSpace(body.Correo))
+                {
+                    var correoLimpio = body.Correo.Trim().ToLower();
+                    if (await db.Usuarios.AnyAsync(u => u.Correo.ToLower() == correoLimpio && u.Id != id))
+                        return Results.Json(new { mensaje = $"El correo '{body.Correo.Trim()}' ya pertenece a otro usuario." }, statusCode: 400);
+                }
+
+                usuario.NombreCompleto = body.NombreCompleto.Trim();
+                usuario.Correo = body.Correo?.Trim() ?? string.Empty;
                 usuario.SucursalId = body.SucursalId;
                 await db.SaveChangesAsync();
                 Logger.Warn($"[Panel de soporte] Usuario #{id} ({usuario.NombreUsuario}) editado.");
@@ -217,12 +228,16 @@ namespace Patronato.Core.Monitoreo
                 if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
+                var nombreSucursal = body.Nombre.Trim();
+                if (await db.Sucursales.AnyAsync(s => s.Nombre.ToLower() == nombreSucursal.ToLower()))
+                    return Results.Json(new { mensaje = $"Ya existe una sucursal con el nombre '{nombreSucursal}'." }, statusCode: 400);
+
                 var sucursal = new Sucursal
                 {
-                    Nombre = body.Nombre,
-                    Direccion = body.Direccion,
-                    Telefono = body.Telefono,
-                    Encargado = body.Encargado,
+                    Nombre = nombreSucursal,
+                    Direccion = body.Direccion?.Trim() ?? string.Empty,
+                    Telefono = body.Telefono?.Trim() ?? string.Empty,
+                    Encargado = body.Encargado?.Trim() ?? string.Empty,
                     Activa = true
                 };
                 db.Sucursales.Add(sucursal);
@@ -238,10 +253,14 @@ namespace Patronato.Core.Monitoreo
                 var sucursal = await db.Sucursales.FindAsync(id);
                 if (sucursal == null) return Results.Json(new { mensaje = "Sucursal no encontrada." }, statusCode: 404);
 
-                sucursal.Nombre = body.Nombre;
-                sucursal.Direccion = body.Direccion;
-                sucursal.Telefono = body.Telefono;
-                sucursal.Encargado = body.Encargado;
+                var nombreSucursal = body.Nombre.Trim();
+                if (await db.Sucursales.AnyAsync(s => s.Nombre.ToLower() == nombreSucursal.ToLower() && s.Id != id))
+                    return Results.Json(new { mensaje = $"Ya existe otra sucursal con el nombre '{nombreSucursal}'." }, statusCode: 400);
+
+                sucursal.Nombre = nombreSucursal;
+                sucursal.Direccion = body.Direccion?.Trim() ?? string.Empty;
+                sucursal.Telefono = body.Telefono?.Trim() ?? string.Empty;
+                sucursal.Encargado = body.Encargado?.Trim() ?? string.Empty;
                 await db.SaveChangesAsync();
                 Logger.Warn($"[Panel de soporte] Sucursal #{id} editada.");
                 return Results.Json(new { mensaje = "Sucursal actualizada." });
@@ -273,13 +292,17 @@ namespace Patronato.Core.Monitoreo
                 if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
+                var codigoLimpio = body.Codigo.Trim();
+                if (await db.ProductosArticulos.AnyAsync(p => p.Codigo.ToLower() == codigoLimpio.ToLower()))
+                    return Results.Json(new { mensaje = $"El código de producto '{codigoLimpio}' ya existe." }, statusCode: 400);
+
                 var producto = new ProductoArticulo
                 {
-                    Codigo = body.Codigo,
-                    Nombre = body.Nombre,
-                    Categoria = body.Categoria,
-                    PrecioVenta = body.PrecioVenta,
-                    StockDisponible = body.StockDisponible
+                    Codigo = codigoLimpio,
+                    Nombre = body.Nombre.Trim(),
+                    Categoria = body.Categoria?.Trim() ?? "",
+                    PrecioVenta = Math.Max(0, body.PrecioVenta),
+                    StockDisponible = Math.Max(0, body.StockDisponible)
                 };
                 db.ProductosArticulos.Add(producto);
                 await db.SaveChangesAsync();
@@ -294,10 +317,14 @@ namespace Patronato.Core.Monitoreo
                 var producto = await db.ProductosArticulos.FindAsync(id);
                 if (producto == null) return Results.Json(new { mensaje = "Producto no encontrado." }, statusCode: 404);
 
-                producto.Codigo = body.Codigo;
-                producto.Nombre = body.Nombre;
-                producto.Categoria = body.Categoria;
-                producto.PrecioVenta = body.PrecioVenta;
+                var codigoLimpio = body.Codigo.Trim();
+                if (await db.ProductosArticulos.AnyAsync(p => p.Codigo.ToLower() == codigoLimpio.ToLower() && p.Id != id))
+                    return Results.Json(new { mensaje = $"El código de producto '{codigoLimpio}' ya pertenece a otro artículo." }, statusCode: 400);
+
+                producto.Codigo = codigoLimpio;
+                producto.Nombre = body.Nombre.Trim();
+                producto.Categoria = body.Categoria?.Trim() ?? "";
+                producto.PrecioVenta = Math.Max(0, body.PrecioVenta);
                 await db.SaveChangesAsync();
                 Logger.Warn($"[Panel de soporte] Producto #{id} editado.");
                 return Results.Json(new { mensaje = "Producto actualizado." });
@@ -329,12 +356,19 @@ namespace Patronato.Core.Monitoreo
                 if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
                 log4net.LogicalThreadContext.Properties["Origen"] = "PanelSoporte";
 
+                if (!string.IsNullOrWhiteSpace(body.Cedula))
+                {
+                    var cedulaLimpia = body.Cedula.Trim();
+                    if (await db.Beneficiarios.AnyAsync(b => b.Cedula == cedulaLimpia))
+                        return Results.Json(new { mensaje = $"Ya existe un beneficiario registrado con la cédula '{cedulaLimpia}'." }, statusCode: 400);
+                }
+
                 var beneficiario = new Beneficiario
                 {
-                    Nombres = body.Nombres,
-                    Apellidos = body.Apellidos,
-                    Cedula = body.Cedula,
-                    Telefono = body.Telefono,
+                    Nombres = body.Nombres.Trim(),
+                    Apellidos = body.Apellidos.Trim(),
+                    Cedula = body.Cedula?.Trim() ?? string.Empty,
+                    Telefono = body.Telefono?.Trim() ?? string.Empty,
                     SedeAsignada = (SedeEnum_REVIEW)body.SedeAsignada,
                     CondicionVisual = (TipoDiscapacidadVisual)body.CondicionVisual,
                     Activo = true
@@ -352,10 +386,17 @@ namespace Patronato.Core.Monitoreo
                 var beneficiario = await db.Beneficiarios.FindAsync(id);
                 if (beneficiario == null) return Results.Json(new { mensaje = "Beneficiario no encontrado." }, statusCode: 404);
 
-                beneficiario.Nombres = body.Nombres;
-                beneficiario.Apellidos = body.Apellidos;
-                beneficiario.Cedula = body.Cedula;
-                beneficiario.Telefono = body.Telefono;
+                if (!string.IsNullOrWhiteSpace(body.Cedula))
+                {
+                    var cedulaLimpia = body.Cedula.Trim();
+                    if (await db.Beneficiarios.AnyAsync(b => b.Cedula == cedulaLimpia && b.Id != id))
+                        return Results.Json(new { mensaje = $"La cédula '{cedulaLimpia}' ya pertenece a otro beneficiario." }, statusCode: 400);
+                }
+
+                beneficiario.Nombres = body.Nombres.Trim();
+                beneficiario.Apellidos = body.Apellidos.Trim();
+                beneficiario.Cedula = body.Cedula?.Trim() ?? string.Empty;
+                beneficiario.Telefono = body.Telefono?.Trim() ?? string.Empty;
                 await db.SaveChangesAsync();
                 Logger.Warn($"[Panel de soporte] Beneficiario #{id} editado.");
                 return Results.Json(new { mensaje = "Beneficiario actualizado." });
@@ -379,6 +420,20 @@ namespace Patronato.Core.Monitoreo
                 }
                 Logger.Warn($"[Panel de soporte] Beneficiario #{id} eliminado permanentemente.");
                 return Results.Json(new { mensaje = "Beneficiario eliminado." });
+            });
+
+            app.MapPost("/monitor/operaciones/sembrar-datos", (HttpContext ctx, ApplicationDbContext db) =>
+            {
+                if (!MonitorAuth.TienePermiso(ctx, PermisosCore.MonitorGestionar)) return Results.Json(new { mensaje = "No autorizado." }, statusCode: 401);
+                var (agregados, detalle) = DbMassiveSeeder.SembrarDatosSiFaltan(db);
+                return Results.Json(new
+                {
+                    mensaje = agregados > 0 
+                        ? $"Se poblaron {agregados} registros masivos reales exitosamente ({detalle})." 
+                        : "La base de datos ya cuenta con más de 350 registros.",
+                    agregados,
+                    detalle
+                });
             });
         }
 
@@ -406,150 +461,876 @@ namespace Patronato.Core.Monitoreo
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Operaciones — Patronato.Core</title>
+<title>Centro de Operaciones — Patronato Nacional de Ciegos</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    --bg-base: #090d16;
+    --bg-surface: #0f172a;
+    --bg-card: #1e293b;
+    --bg-card-hover: #27354a;
+    --border-color: #334155;
+    --border-subtle: #1e293b;
+    --text-primary: #f8fafc;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --brand-blue: #2563eb;
+    --brand-blue-hover: #1d4ed8;
+    --brand-cyan: #0284c7;
+    --brand-emerald: #059669;
+    --brand-emerald-hover: #047857;
+    --brand-rose: #dc2626;
+    --brand-rose-hover: #b91c1c;
+    --brand-amber: #d97706;
+    color-scheme: dark;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #0b1120; color: #e2e8f0; }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; background: #111827; border-bottom: 1px solid #1f2937; }
-  header h1 { margin: 0; font-size: 16px; }
-  header small { color: #94a3b8; }
-  main { padding: 20px; max-width: 1200px; margin: 0 auto; }
-  .login { max-width: 360px; margin: 80px auto; background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 24px; text-align: center; }
-  .login input { width: 100%; padding: 10px; margin: 12px 0; border-radius: 6px; border: 1px solid #334155; background: #0b1120; color: #e2e8f0; }
-  .login button, button { background: #2563eb; color: white; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  .login button:hover, button:hover { background: #1d4ed8; }
-  button.peligro { background: #7f1d1d; }
-  button.peligro:hover { background: #991b1b; }
-  button.exito { background: #065f46; }
-  button.exito:hover { background: #047857; }
-  .oculto { display: none; }
-  .panel { background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
-  .panel h2 { margin: 0 0 12px; font-size: 14px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { text-align: left; padding: 8px; border-bottom: 1px solid #1f2937; color: #94a3b8; font-weight: 600; }
-  td { padding: 8px; border-bottom: 1px solid #1a2332; vertical-align: middle; }
-  select, input.stock { background: #0b1120; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
-  input.stock { width: 70px; }
-  .tag { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
-  .tag-ok { background: #065f46; color: #6ee7b7; }
-  .tag-mal { background: #450a0a; color: #f87171; }
-  .accion { display: flex; gap: 6px; align-items: center; }
-  #mensaje { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 1000; }
-  #mensaje.ok { background: #065f46; color: #d1fae5; }
-  #mensaje.error { background: #450a0a; color: #fecaca; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
 
-  /* Modal Formulario */
+  /* Top Navigation Bar */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-badge {
+    background: linear-gradient(135deg, #034ea2, #2563eb);
+    color: white;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35);
+  }
+  .header-titles h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.2px;
+  }
+  .header-titles small {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .session-pill {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid var(--border-color);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+
+  /* Main Container */
+  main {
+    padding: 24px 28px 48px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* Login Screen */
+  .login-card {
+    max-width: 380px;
+    margin: 90px auto;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 32px 28px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    text-align: center;
+  }
+  .login-card h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .login-card p {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0 0 20px;
+    line-height: 1.4;
+  }
+  .login-card input {
+    width: 100%;
+    padding: 11px 14px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+  }
+  .login-card input:focus {
+    border-color: var(--brand-blue);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  }
+  .login-card button:not(.btn-eye) {
+    width: 100%;
+    padding: 11px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .btn-eye {
+    position: absolute !important;
+    right: 12px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    color: #94a3b8 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 10 !important;
+  }
+  .btn-eye:hover {
+    background: transparent !important;
+    color: #38bdf8 !important;
+    transform: translateY(-50%) scale(1.1) !important;
+  }
+
+  /* KPI Stat Counters Row */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: #475569;
+  }
+  .stat-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .stat-icon.blue { background: rgba(37, 99, 235, 0.15); color: #60a5fa; }
+  .stat-icon.emerald { background: rgba(5, 150, 105, 0.15); color: #34d399; }
+  .stat-icon.amber { background: rgba(217, 119, 6, 0.15); color: #fbbf24; }
+  .stat-icon.cyan { background: rgba(2, 132, 199, 0.15); color: #38bdf8; }
+  .stat-info { display: flex; flex-direction: column; }
+  .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+  .stat-value { font-size: 22px; font-weight: 800; color: var(--text-primary); margin: 2px 0; }
+  .stat-sub { font-size: 10.5px; color: var(--text-dim); }
+
+  /* Toolbar: Search, Filters & Actions */
+  .toolbar {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .toolbar-search {
+    flex: 1;
+    min-width: 260px;
+    position: relative;
+  }
+  .toolbar-search input {
+    width: 100%;
+    padding: 10px 14px 10px 38px;
+    background: var(--bg-base);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .toolbar-search input:focus {
+    border-color: var(--brand-blue);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* Interactive Tab Switcher */
+  .tab-nav {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 12px 18px;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    transition: color 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-primary);
+    background: rgba(30, 41, 59, 0.5);
+  }
+  .tab-btn.activo {
+    color: #60a5fa;
+    background: rgba(30, 41, 59, 0.85);
+  }
+  .tab-btn.activo::after {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #3b82f6;
+  }
+  .tab-count {
+    background: rgba(51, 65, 85, 0.6);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .tab-btn.activo .tab-count {
+    background: rgba(37, 99, 235, 0.3);
+    color: #93c5fd;
+  }
+
+  /* Table Cards */
+  .panel-tabla {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  }
+  .panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(30, 41, 59, 0.4);
+  }
+  .panel-header h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tabla-scroll {
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    text-align: left;
+  }
+  thead th {
+    background: rgba(15, 23, 42, 0.6);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #1a2332;
+    vertical-align: middle;
+    color: var(--text-primary);
+  }
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+  tbody tr:hover {
+    background: rgba(30, 41, 59, 0.5);
+  }
+
+  /* Form Controls in Table */
+  select.select-tabla, input.input-stock {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    outline: none;
+  }
+  select.select-tabla:focus, input.input-stock:focus {
+    border-color: var(--brand-blue);
+  }
+  input.input-stock {
+    width: 75px;
+  }
+
+  /* Badges & Tags */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .tag-ok {
+    background: rgba(5, 150, 105, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(5, 150, 105, 0.3);
+  }
+  .tag-mal {
+    background: rgba(220, 38, 38, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(220, 38, 38, 0.3);
+  }
+  .tag-warn {
+    background: rgba(217, 119, 6, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(217, 119, 6, 0.3);
+  }
+
+  /* Action Buttons */
+  button {
+    background: var(--brand-blue);
+    color: white;
+    border: none;
+    padding: 7px 13px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+  button:hover {
+    background: var(--brand-blue-hover);
+  }
+  button:active {
+    transform: scale(0.98);
+  }
+  button.btn-secundario {
+    background: #334155;
+    color: var(--text-primary);
+  }
+  button.btn-secundario:hover {
+    background: #475569;
+  }
+  button.peligro {
+    background: rgba(220, 38, 38, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(220, 38, 38, 0.35);
+  }
+  button.peligro:hover {
+    background: var(--brand-rose);
+    color: white;
+  }
+  button.exito {
+    background: var(--brand-emerald);
+  }
+  button.exito:hover {
+    background: var(--brand-emerald-hover);
+  }
+  .btn-seeder {
+    background: linear-gradient(135deg, #059669, #0d9488);
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+  }
+  .btn-seeder:hover {
+    background: linear-gradient(135deg, #047857, #0f766e);
+  }
+  .accion {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* Notification Toast */
+  #mensaje {
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 1000;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  #mensaje.ok { background: #065f46; color: #ecfdf5; border: 1px solid #059669; }
+  #mensaje.error { background: #7f1d1d; color: #fef2f2; border: 1px solid #dc2626; }
+  .oculto { display: none !important; }
+
+  /* Modals */
   .modal-overlay {
-    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(0,0,0,0.72); backdrop-filter: blur(3px);
-    display: flex; align-items: center; justify-content: center; z-index: 500;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
   }
-  .modal-overlay.oculto { display: none; }
   .modal-card {
-    background: #111827; border: 1px solid #334155; border-radius: 12px;
-    width: 95%; max-width: 520px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
-    overflow: hidden; animation: popIn 0.15s ease-out;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    width: 95%;
+    max-width: 540px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+    animation: popIn 0.15s ease-out;
   }
-  @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes popIn { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .modal-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px; border-bottom: 1px solid #1f2937; background: #1a2234;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(30, 41, 59, 0.6);
   }
-  .btn-cerrar { background: transparent; border: none; font-size: 22px; color: #94a3b8; cursor: pointer; padding: 0 6px; line-height: 1; border-radius: 4px; }
-  .btn-cerrar:hover { color: #f87171; background: rgba(239, 68, 68, 0.1); }
-  .modal-campos { padding: 18px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-height: 70vh; overflow-y: auto; }
+  .btn-cerrar {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 6px;
+    line-height: 1;
+    border-radius: 6px;
+  }
+  .btn-cerrar:hover {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.1);
+  }
+  .modal-campos {
+    padding: 20px 22px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
   .modal-campos .col-span-2 { grid-column: span 2; }
   .campo-item { display: flex; flex-direction: column; gap: 5px; }
-  .campo-item label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
-  .campo-item input, .campo-item select {
-    background: #0b1120; border: 1px solid #334155; color: #e2e8f0;
-    padding: 8px 11px; border-radius: 6px; font-size: 13px; outline: none; width: 100%; box-sizing: border-box;
+  .campo-item label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
-  .campo-item input:focus, .campo-item select:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
+  .campo-item input, .campo-item select {
+    background: var(--bg-base);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    width: 100%;
+  }
+  .campo-item input:focus, .campo-item select:focus {
+    border-color: var(--brand-blue);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  }
   .modal-acciones {
-    display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px;
-    border-top: 1px solid #1f2937; background: #0f172a;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--border-color);
+    background: rgba(15, 23, 42, 0.8);
   }
 </style>
 </head>
 <body>
 
-<div id="login" class="login">
-  <h2>🔒 Operaciones del Core</h2>
-  <p style="color:#94a3b8;font-size:13px;">Acceso directo de soporte/mantenimiento. Inicia sesión con tu usuario del Core.</p>
-  <input id="usuario" placeholder="Usuario" autocomplete="username" />
-  <input id="clave" type="password" placeholder="Contraseña" autocomplete="current-password" />
-  <button onclick="conectar()">Entrar</button>
-  <p id="loginError" style="color:#f87171;font-size:12px;"></p>
+<!-- Login Modal -->
+<div id="login" class="login-card">
+  <div style="margin-bottom:14px;">
+    <span class="brand-badge" style="font-size:16px;padding:8px 14px;">PNC</span>
+  </div>
+  <h2>Centro de Control Operativo</h2>
+  <p>Inicia sesión con tu cuenta de personal autorizado para acceder a la gestión institucional.</p>
+  <input id="usuario" placeholder="Nombre de usuario" autocomplete="username" />
+  <div style="position:relative;width:100%;margin-bottom:12px;">
+    <input id="clave" type="password" placeholder="Contraseña de acceso" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding-right:44px;margin-bottom:0;" />
+    <button type="button" class="btn-eye" onclick="const c=document.getElementById('clave');c.type=c.type==='password'?'text':'password';this.textContent=c.type==='password'?'👁️':'🙈';" title="Ver u ocultar contraseña">👁️</button>
+  </div>
+  <button onclick="conectar()">Entrar al Sistema</button>
+  <p id="loginError" style="color:#f87171;font-size:12px;margin-top:14px;margin-bottom:0;"></p>
 </div>
 
+<!-- Main App Portal -->
 <div id="app" class="oculto">
   <header>
-    <div>
-      <h1>Patronato.Core · Operaciones</h1>
-      <small>Acceso directo, fuera del Gateway — acciones administrativas puntuales</small>
+    <div class="header-brand">
+      <div class="brand-badge">PNC</div>
+      <div class="header-titles">
+        <h1>Patronato Nacional de Ciegos · Centro de Control Operativo</h1>
+        <small>Administración integral en tiempo real de personal, sedes, catálogo y beneficiarios</small>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:14px;">
-      <span id="sesionTexto" style="color:#94a3b8;font-size:12px;"></span>
-      <button onclick="cerrarSesion()" style="background:#374151;font-size:12px;padding:6px 10px;">Salir</button>
-      <a href="/monitor" style="color:#60a5fa;text-decoration:none;font-size:13px;">← Monitor de logs</a>
+    <div class="header-actions">
+      <span id="sesionTexto" class="session-pill"></span>
+      <a href="/monitor" style="color:#60a5fa;text-decoration:none;font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;">
+        <span>📊</span> Auditoría en Vivo
+      </a>
+      <button onclick="cerrarSesion()" class="btn-secundario" style="padding:6px 12px;font-size:11px;">Cerrar Sesión</button>
     </div>
   </header>
 
   <main>
-    <div class="panel">
-      <h2>Usuarios / Empleados <button class="solo-gestion" onclick="crearUsuario()">+ Nuevo</button></h2>
-      <table><thead><tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Sucursal</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody id="tablaUsuarios"></tbody></table>
+    <!-- KPI Counters Grid -->
+    <div class="stats-grid">
+      <div class="stat-card" onclick="cambiarPestana('usuarios')" style="cursor:pointer;">
+        <div class="stat-icon blue">👥</div>
+        <div class="stat-info">
+          <span class="stat-label">Personal Registrado</span>
+          <span class="stat-value" id="statUsuarios">—</span>
+          <span class="stat-sub">Colaboradores con acceso activo</span>
+        </div>
+      </div>
+      <div class="stat-card" onclick="cambiarPestana('sucursales')" style="cursor:pointer;">
+        <div class="stat-icon emerald">🏢</div>
+        <div class="stat-info">
+          <span class="stat-label">Sedes a Nivel Nacional</span>
+          <span class="stat-value" id="statSucursales">—</span>
+          <span class="stat-sub">Sede Central y filiales regionales</span>
+        </div>
+      </div>
+      <div class="stat-card" onclick="cambiarPestana('productos')" style="cursor:pointer;">
+        <div class="stat-icon amber">📦</div>
+        <div class="stat-info">
+          <span class="stat-label">Artículos en Catálogo</span>
+          <span class="stat-value" id="statProductos">—</span>
+          <span class="stat-sub">Tiflotecnología, óptica y taller</span>
+        </div>
+      </div>
+      <div class="stat-card" onclick="cambiarPestana('beneficiarios')" style="cursor:pointer;">
+        <div class="stat-icon cyan">🤝</div>
+        <div class="stat-info">
+          <span class="stat-label">Beneficiarios Activos</span>
+          <span class="stat-value" id="statBeneficiarios">—</span>
+          <span class="stat-sub">Comunidad asistida por el Patronato</span>
+        </div>
+      </div>
     </div>
 
-    <div class="panel">
-      <h2>Sucursales <button class="solo-gestion" onclick="crearSucursal()">+ Nueva</button></h2>
-      <table><thead><tr><th>Nombre</th><th>Dirección</th><th>Teléfono</th><th>Encargado</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody id="tablaSucursales"></tbody></table>
+    <!-- Unified Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-search">
+        <span class="search-icon">🔍</span>
+        <input id="filtroGlobal" placeholder="Buscar por nombre, código, cédula, cargo o teléfono en la sección activa..." oninput="renderTablas()" />
+      </div>
+      <div class="toolbar-actions">
+        <button id="btnCrearEntidad" class="solo-gestion exito" onclick="accionCrearActual()">
+          <span>+</span> <span id="txtBtnCrear">Nuevo Registro</span>
+        </button>
+        <button class="btn-seeder solo-gestion" onclick="sembrarDatosReales()" title="Poblar catálogo extendido con más de 350 registros de prueba">
+          <span>🌱</span> Sembrar 350+ Registros
+        </button>
+        <button onclick="cargar()" class="btn-secundario">
+          <span>🔄</span> Refrescar
+        </button>
+      </div>
     </div>
 
-    <div class="panel">
-      <h2>Inventario <button class="solo-gestion" onclick="crearProducto()">+ Nuevo</button></h2>
-      <table><thead><tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Ajustar</th><th>Acciones</th></tr></thead>
-      <tbody id="tablaProductos"></tbody></table>
+    <!-- Navigation Tabs -->
+    <div class="tab-nav">
+      <button class="tab-btn activo" id="tabBtn_usuarios" onclick="cambiarPestana('usuarios')">
+        <span>👥</span> Usuarios y Personal <span class="tab-count" id="countTabUsuarios">0</span>
+      </button>
+      <button class="tab-btn" id="tabBtn_sucursales" onclick="cambiarPestana('sucursales')">
+        <span>🏢</span> Sedes y Sucursales <span class="tab-count" id="countTabSucursales">0</span>
+      </button>
+      <button class="tab-btn" id="tabBtn_productos" onclick="cambiarPestana('productos')">
+        <span>📦</span> Catálogo e Inventario <span class="tab-count" id="countTabProductos">0</span>
+      </button>
+      <button class="tab-btn" id="tabBtn_beneficiarios" onclick="cambiarPestana('beneficiarios')">
+        <span>🤝</span> Beneficiarios <span class="tab-count" id="countTabBeneficiarios">0</span>
+      </button>
     </div>
 
-    <div class="panel">
-      <h2>Beneficiarios <button class="solo-gestion" onclick="crearBeneficiario()">+ Nuevo</button></h2>
-      <table><thead><tr><th>Nombre</th><th>Cédula</th><th>Teléfono</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody id="tablaBeneficiarios"></tbody></table>
+    <!-- Tab Content 1: Usuarios -->
+    <div id="panel_usuarios" class="panel-tabla">
+      <div class="panel-header">
+        <h2>👥 Personal y Colaboradores del Patronato</h2>
+        <small style="color:var(--text-muted);">Asignación de roles y estados de cuenta institucionales</small>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre Completo</th>
+              <th>Usuario</th>
+              <th>Correo Electrónico</th>
+              <th>Rol Institucional</th>
+              <th>Sede</th>
+              <th>Estado de Cuenta</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaUsuarios"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab Content 2: Sucursales -->
+    <div id="panel_sucursales" class="panel-tabla oculto">
+      <div class="panel-header">
+        <h2>🏢 Sedes y Centros Regionales</h2>
+        <small style="color:var(--text-muted);">Presencia institucional en el territorio dominicano</small>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Sede</th>
+              <th>Dirección</th>
+              <th>Teléfono</th>
+              <th>Encargado</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaSucursales"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab Content 3: Productos / Inventario -->
+    <div id="panel_productos" class="panel-tabla oculto">
+      <div class="panel-header">
+        <h2>📦 Catálogo de Artículos y Taller Eco-Protegido</h2>
+        <small style="color:var(--text-muted);">Bastones, Braille, ayudas ópticas y artesanías ecológicas</small>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Artículo</th>
+              <th>Categoría</th>
+              <th>Precio de Venta</th>
+              <th>Stock Físico</th>
+              <th>Ajustar Stock</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaProductos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab Content 4: Beneficiarios -->
+    <div id="panel_beneficiarios" class="panel-tabla oculto">
+      <div class="panel-header">
+        <h2>🤝 Beneficiarios Asistidos</h2>
+        <small style="color:var(--text-muted);">Pacientes y personas con discapacidad visual en seguimiento</small>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre Completo</th>
+              <th>Cédula</th>
+              <th>Teléfono</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaBeneficiarios"></tbody>
+        </table>
+      </div>
     </div>
   </main>
 </div>
+
+<!-- Mensaje Toast -->
 <div id="mensaje" class="oculto"></div>
 
 <!-- Modal Formulario Rápido -->
 <div id="modalOverlay" class="modal-overlay oculto" onclick="clickFondoModal(event)">
   <div class="modal-card">
     <div class="modal-header">
-      <h3 id="modalTitulo" style="margin:0;font-size:15px;font-weight:600;">Formulario</h3>
+      <h3 id="modalTitulo" style="margin:0;font-size:15px;font-weight:700;">Formulario</h3>
       <button type="button" onclick="cerrarModal()" class="btn-cerrar">&times;</button>
     </div>
     <form id="modalForm" onsubmit="enviarModal(event)">
       <div id="modalCampos" class="modal-campos"></div>
       <div class="modal-acciones">
-        <button type="button" onclick="cerrarModal()" style="background:#374151;">Cancelar</button>
+        <button type="button" onclick="cerrarModal()" class="btn-secundario">Cancelar</button>
         <button type="submit" class="exito" id="modalBtnGuardar">Guardar</button>
       </div>
     </form>
   </div>
 </div>
 
+<!-- Modal de Confirmación para Acciones Destructivas -->
+<div id="modalConfirmacion" class="modal-overlay oculto" onclick="clickFondoConfirmacion(event)">
+  <div class="modal-card" style="max-width:440px;">
+    <div class="modal-header">
+      <h3 id="confirmTitulo" style="margin:0;font-size:15px;font-weight:700;color:#f87171;">Confirmar Acción</h3>
+      <button type="button" onclick="cerrarConfirmacion()" class="btn-cerrar">&times;</button>
+    </div>
+    <div style="padding:20px 22px;">
+      <p id="confirmMensaje" style="color:#cbd5e1;font-size:13px;line-height:1.5;margin:0 0 20px;"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" onclick="cerrarConfirmacion()" class="btn-secundario">Cancelar</button>
+        <button type="button" id="btnConfirmarAccion" class="peligro">Confirmar y Proceder</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 let token = sessionStorage.getItem('monitorToken') || '';
 let MI_PERMISOS = new Set();
-let ROLES = {}; // se llena con d.roles en cada pintar() — los ids ya no son fijos (ver CoreRole)
-let ROLES_RESTRINGIDOS = new Set(); // roles que este panel no puede asignar (ver EsRolRestringido en el servidor)
+let ROLES = {};
+let ROLES_RESTRINGIDOS = new Set();
 const ESTADOS = ['Activo', 'Suspendido', 'Revocado'];
+let pestanaActiva = 'usuarios';
+let ultimoDato = { usuarios: [], sucursales: [], productos: [], beneficiarios: [] };
 
 if (token) conectar(true);
+
+function cambiarPestana(p) {
+  pestanaActiva = p;
+  ['usuarios', 'sucursales', 'productos', 'beneficiarios'].forEach(nombre => {
+    const btn = document.getElementById(`tabBtn_${nombre}`);
+    const panel = document.getElementById(`panel_${nombre}`);
+    if (btn) btn.classList.toggle('activo', nombre === p);
+    if (panel) panel.classList.toggle('oculto', nombre !== p);
+  });
+
+  const txtCrear = document.getElementById('txtBtnCrear');
+  if (txtCrear) {
+    txtCrear.textContent = p === 'usuarios' ? 'Nuevo Usuario'
+      : (p === 'sucursales' ? 'Nueva Sede'
+      : (p === 'productos' ? 'Nuevo Producto' : 'Nuevo Beneficiario'));
+  }
+}
+
+function accionCrearActual() {
+  if (pestanaActiva === 'usuarios') crearUsuario();
+  else if (pestanaActiva === 'sucursales') crearSucursal();
+  else if (pestanaActiva === 'productos') crearProducto();
+  else if (pestanaActiva === 'beneficiarios') crearBeneficiario();
+}
+
+async function sembrarDatosReales() {
+  if (!confirm('¿Deseas poblar la base de datos con el catálogo extendido y datos masivos de prueba (+350 registros)?')) return;
+  mostrarMensaje('Poblando catálogo y registros de prueba...', false);
+  const r = await fetch('/monitor/operaciones/sembrar-datos', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+  });
+  const res = await r.json().catch(() => ({}));
+  mostrarMensaje(res.mensaje || 'Listo.', !r.ok);
+  if (r.ok) cargar();
+}
 
 async function conectar(silencioso) {
   if (!silencioso) {
@@ -559,7 +1340,7 @@ async function conectar(silencioso) {
     const r = await fetch('/monitor/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombreUsuario: usuario, password: clave }) });
     const datos = await r.json().catch(() => ({}));
     if (!r.ok) {
-      document.getElementById('loginError').textContent = datos.mensaje || 'No se pudo iniciar sesión.';
+      document.getElementById('loginError').textContent = datos.mensaje || 'Credenciales incorrectas.';
       return;
     }
     token = datos.token;
@@ -570,17 +1351,17 @@ async function conectar(silencioso) {
   fetch('/monitor/operaciones/datos', { headers: { 'Authorization': 'Bearer ' + token } }).then(async r => {
     if (r.status === 401 || r.status === 403) {
       cerrarSesion();
-      document.getElementById('loginError').textContent = 'Sesión inválida o sin acceso. Inicia sesión de nuevo.';
+      document.getElementById('loginError').textContent = 'Sesión expirada. Inicie sesión nuevamente.';
       return;
     }
     const sesion = JSON.parse(sessionStorage.getItem('monitorSesion') || '{}');
     MI_PERMISOS = new Set(sesion.permisos || []);
-    document.getElementById('sesionTexto').textContent = sesion.nombre ? `${sesion.nombre} (${sesion.rol})` : '';
+    document.getElementById('sesionTexto').textContent = sesion.nombre ? `${sesion.nombre} • ${sesion.rol}` : '';
     document.getElementById('login').classList.add('oculto');
     document.getElementById('app').classList.remove('oculto');
     document.querySelectorAll('.solo-gestion').forEach(el => el.style.display = MI_PERMISOS.has('monitor.gestionar') ? '' : 'none');
     pintar(await r.json());
-  }).catch(() => { document.getElementById('loginError').textContent = 'No se pudo conectar al Core.'; });
+  }).catch(() => { document.getElementById('loginError').textContent = 'No se pudo comunicar con el servidor.'; });
 }
 
 function cerrarSesion() {
@@ -598,14 +1379,14 @@ function cargar() {
 
 function mostrarMensaje(texto, esError) {
   const el = document.getElementById('mensaje');
-  el.textContent = texto;
+  el.textContent = (esError ? '⚠️ ' : '✅ ') + texto;
   el.className = esError ? 'error' : 'ok';
-  setTimeout(() => el.classList.add('oculto'), 3000);
+  setTimeout(() => el.classList.add('oculto'), 3500);
 }
 
 async function enviar(ruta, body, metodo) {
   if (!MI_PERMISOS.has('monitor.gestionar')) {
-    mostrarMensaje('Tu usuario solo tiene acceso de auditoría (solo lectura) en este panel.', true);
+    mostrarMensaje('Permiso denegado: Tu perfil solo tiene autorización de lectura.', true);
     return false;
   }
   const r = await fetch(ruta, {
@@ -614,7 +1395,7 @@ async function enviar(ruta, body, metodo) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const datos = await r.json().catch(() => ({}));
-  mostrarMensaje(datos.mensaje || (r.ok ? 'Listo.' : 'Error.'), !r.ok);
+  mostrarMensaje(datos.mensaje || (r.ok ? 'Operación exitosa.' : 'Error al procesar la solicitud.'), !r.ok);
   if (r.ok) cargar();
   return r.ok;
 }
@@ -623,8 +1404,8 @@ function cambiarEstado(id, select) { enviar(`/monitor/operaciones/usuarios/${id}
 function cambiarRol(id, select) {
   const rolId = Number(select.value);
   if (ROLES_RESTRINGIDOS.has(rolId)) {
-    mostrarMensaje(`El rol '${ROLES[rolId]}' (SuperAdmin/IT) no se puede asignar desde aquí. Usa 'Usuarios del Core' en la Web.`, true);
-    cargar(); // repinta el select de vuelta a su valor anterior
+    mostrarMensaje(`El rol '${ROLES[rolId]}' es de alta seguridad y debe gestionarse desde la plataforma web.`, true);
+    cargar();
     return;
   }
   enviar(`/monitor/operaciones/usuarios/${id}/rol`, { rol: rolId });
@@ -633,12 +1414,12 @@ function toggleSucursal(id, activa) { enviar(`/monitor/operaciones/sucursales/${
 function toggleBeneficiario(id, activo) { enviar(`/monitor/operaciones/beneficiarios/${id}/activo`, { activo: !activo }); }
 function ajustarStock(id, input) {
   const delta = Number(input.value);
-  if (!delta) return mostrarMensaje('Indica una cantidad distinta de cero.', true);
+  if (!delta) return mostrarMensaje('Ingrese una cantidad válida distinta de cero.', true);
   enviar(`/monitor/operaciones/productos/${id}/ajustar-stock`, { delta });
   input.value = '';
 }
 
-// ---- Sistema de Modal Unificado (rápido y sin prompts molestos) ----
+// Modal System
 let modalAccion = null;
 
 function abrirModal({ titulo, botonTexto = 'Guardar', campos, onGuardar }) {
@@ -655,7 +1436,12 @@ function abrirModal({ titulo, botonTexto = 'Guardar', campos, onGuardar }) {
       const opciones = (c.opciones || []).map(op =>
         `<option value="${op.valor}" ${String(op.valor) === String(c.valor) ? 'selected' : ''} ${op.disabled ? 'disabled' : ''}>${op.texto}</option>`
       ).join('');
-      controlHtml = `<select id="campo_${c.nombre}" name="${c.nombre}" ${c.requerido ? 'required' : ''}>${opciones}</select>`;
+    } else if (c.tipo === 'password') {
+      controlHtml = `
+        <div style="position:relative;width:100%;">
+          <input id="campo_${c.nombre}" name="${c.nombre}" type="password" value="${c.valor ?? ''}" placeholder="${c.placeholder ?? ''}" ${c.requerido ? 'required' : ''} autocomplete="off" style="width:100%;box-sizing:border-box;padding-right:42px;" />
+          <button type="button" class="btn-eye" onclick="const inp=document.getElementById('campo_${c.nombre}');inp.type=inp.type==='password'?'text':'password';this.textContent=inp.type==='password'?'👁️':'🙈';" title="Ver u ocultar contraseña">👁️</button>
+        </div>`;
     } else {
       controlHtml = `<input id="campo_${c.nombre}" name="${c.nombre}" type="${c.tipo || 'text'}" value="${c.valor ?? ''}" placeholder="${c.placeholder ?? ''}" ${c.step ? `step="${c.step}"` : ''} ${c.min !== undefined ? `min="${c.min}"` : ''} ${c.requerido ? 'required' : ''} autocomplete="off" />`;
     }
@@ -664,7 +1450,7 @@ function abrirModal({ titulo, botonTexto = 'Guardar', campos, onGuardar }) {
       <div class="campo-item ${colClass}">
         <label for="campo_${c.nombre}">${c.etiqueta}${c.requerido ? ' <span style="color:#f87171;">*</span>' : ''}</label>
         ${controlHtml}
-        ${c.ayuda ? `<span style="font-size:11px;color:#94a3b8;margin-top:2px;">${c.ayuda}</span>` : ''}
+        ${c.ayuda ? `<span style="font-size:10.5px;color:#94a3b8;margin-top:2px;">${c.ayuda}</span>` : ''}
       </div>
     `;
   }).join('');
@@ -683,8 +1469,37 @@ function clickFondoModal(e) {
   if (e.target.id === 'modalOverlay') cerrarModal();
 }
 
+function clickFondoConfirmacion(e) {
+  if (e.target.id === 'modalConfirmacion') cerrarConfirmacion();
+}
+
+let confirmacionAccion = null;
+
+function pedirConfirmacion({ titulo = 'Confirmar Acción', mensaje, onConfirmar }) {
+  document.getElementById('confirmTitulo').textContent = titulo;
+  document.getElementById('confirmMensaje').textContent = mensaje;
+  confirmacionAccion = onConfirmar;
+  document.getElementById('modalConfirmacion').classList.remove('oculto');
+}
+
+function cerrarConfirmacion() {
+  document.getElementById('modalConfirmacion').classList.add('oculto');
+  confirmacionAccion = null;
+}
+
+document.getElementById('btnConfirmarAccion').addEventListener('click', async () => {
+  if (confirmacionAccion) {
+    const accion = confirmacionAccion;
+    cerrarConfirmacion();
+    await accion();
+  }
+});
+
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') cerrarModal();
+  if (e.key === 'Escape') {
+    cerrarModal();
+    cerrarConfirmacion();
+  }
 });
 
 async function enviarModal(e) {
@@ -706,7 +1521,7 @@ async function enviarModal(e) {
   }
 }
 
-// ---- CRUD de Usuarios ----
+// CRUD Usuarios
 function crearUsuario() {
   const rolesAsignables = Object.entries(ROLES)
     .filter(([v]) => !ROLES_RESTRINGIDOS.has(Number(v)))
@@ -716,18 +1531,18 @@ function crearUsuario() {
     valor: s.id,
     texto: `${s.nombre} (#${s.id})`
   }));
-  if (sucursalesOpciones.length === 0) sucursalesOpciones.push({ valor: 1, texto: 'Sede Principal (#1)' });
+  if (sucursalesOpciones.length === 0) sucursalesOpciones.push({ valor: 1, texto: 'Sede Central (#1)' });
 
   abrirModal({
-    titulo: 'Nuevo Usuario / Empleado',
+    titulo: 'Nuevo Colaborador / Usuario',
     botonTexto: 'Crear Usuario',
     campos: [
       { nombre: 'nombreCompleto', etiqueta: 'Nombre Completo', requerido: true, colSpan: 2 },
       { nombre: 'nombreUsuario', etiqueta: 'Usuario (Login)', requerido: true },
-      { nombre: 'passwordHash', etiqueta: 'Contraseña Inicial', tipo: 'password', requerido: true, ayuda: 'El empleado la cambiará en su primer ingreso' },
-      { nombre: 'correo', etiqueta: 'Correo Electrónico', tipo: 'email', colSpan: 2 },
+      { nombre: 'passwordHash', etiqueta: 'Contraseña Temporal', tipo: 'password', requerido: true, ayuda: 'El usuario podrá actualizarla tras ingresar' },
+      { nombre: 'correo', etiqueta: 'Correo Institucional', tipo: 'email', colSpan: 2 },
       { nombre: 'rol', etiqueta: 'Rol', tipo: 'select', opciones: rolesAsignables, valor: rolesAsignables[0]?.valor },
-      { nombre: 'sucursalId', etiqueta: 'Sucursal', tipo: 'select', opciones: sucursalesOpciones, valor: sucursalesOpciones[0]?.valor }
+      { nombre: 'sucursalId', etiqueta: 'Sede Asignada', tipo: 'select', opciones: sucursalesOpciones, valor: sucursalesOpciones[0]?.valor }
     ],
     onGuardar: async (datos) => {
       return await enviar('/monitor/operaciones/usuarios', {
@@ -755,7 +1570,7 @@ function editarUsuario(u) {
     campos: [
       { nombre: 'nombreCompleto', etiqueta: 'Nombre Completo', valor: u.nombreCompleto, requerido: true, colSpan: 2 },
       { nombre: 'correo', etiqueta: 'Correo Electrónico', tipo: 'email', valor: u.correo || '', colSpan: 2 },
-      { nombre: 'sucursalId', etiqueta: 'Sucursal', tipo: 'select', opciones: sucursalesOpciones, valor: u.sucursalId, colSpan: 2 }
+      { nombre: 'sucursalId', etiqueta: 'Sede Asignada', tipo: 'select', opciones: sucursalesOpciones, valor: u.sucursalId, colSpan: 2 }
     ],
     onGuardar: async (datos) => {
       return await enviar(`/monitor/operaciones/usuarios/${u.id}`, {
@@ -767,22 +1582,31 @@ function editarUsuario(u) {
   });
 }
 
-function eliminarUsuario(id, nombre) {
-  if (confirm(`¿Eliminar permanentemente a "${nombre}"? Esta acción no se puede deshacer.`)) {
-    enviar(`/monitor/operaciones/usuarios/${id}`, undefined, 'DELETE');
-  }
+function solicitarEditarUsuario(id) {
+  const u = (ultimoDato.usuarios || []).find(x => x.id === id);
+  if (u) editarUsuario(u);
 }
 
-// ---- CRUD de Sucursales ----
+function solicitarEliminarUsuario(id) {
+  const u = (ultimoDato.usuarios || []).find(x => x.id === id);
+  const nombre = u ? (u.nombreCompleto || u.nombreUsuario) : `#${id}`;
+  pedirConfirmacion({
+    titulo: 'Eliminar Usuario',
+    mensaje: `¿Confirma la eliminación permanente del usuario "${nombre}"?`,
+    onConfirmar: () => enviar(`/monitor/operaciones/usuarios/${id}`, undefined, 'DELETE')
+  });
+}
+
+// CRUD Sucursales
 function crearSucursal() {
   abrirModal({
-    titulo: 'Nueva Sucursal',
-    botonTexto: 'Crear Sucursal',
+    titulo: 'Nueva Sede / Sucursal',
+    botonTexto: 'Registrar Sede',
     campos: [
-      { nombre: 'nombre', etiqueta: 'Nombre de Sucursal', requerido: true, colSpan: 2 },
-      { nombre: 'direccion', etiqueta: 'Dirección', colSpan: 2 },
-      { nombre: 'telefono', etiqueta: 'Teléfono' },
-      { nombre: 'encargado', etiqueta: 'Encargado' }
+      { nombre: 'nombre', etiqueta: 'Nombre de la Sede', requerido: true, colSpan: 2 },
+      { nombre: 'direccion', etiqueta: 'Dirección Completa', colSpan: 2 },
+      { nombre: 'telefono', etiqueta: 'Teléfono de Contacto' },
+      { nombre: 'encargado', etiqueta: 'Director / Encargado' }
     ],
     onGuardar: async (datos) => {
       return await enviar('/monitor/operaciones/sucursales', {
@@ -797,13 +1621,13 @@ function crearSucursal() {
 
 function editarSucursal(s) {
   abrirModal({
-    titulo: `Editar Sucursal: ${s.nombre}`,
+    titulo: `Editar Sede: ${s.nombre}`,
     botonTexto: 'Guardar Cambios',
     campos: [
-      { nombre: 'nombre', etiqueta: 'Nombre de Sucursal', valor: s.nombre, requerido: true, colSpan: 2 },
-      { nombre: 'direccion', etiqueta: 'Dirección', valor: s.direccion || '', colSpan: 2 },
+      { nombre: 'nombre', etiqueta: 'Nombre de la Sede', valor: s.nombre, requerido: true, colSpan: 2 },
+      { nombre: 'direccion', etiqueta: 'Dirección Completa', valor: s.direccion || '', colSpan: 2 },
       { nombre: 'telefono', etiqueta: 'Teléfono', valor: s.telefono || '' },
-      { nombre: 'encargado', etiqueta: 'Encargado', valor: s.encargado || '' }
+      { nombre: 'encargado', etiqueta: 'Director / Encargado', valor: s.encargado || '' }
     ],
     onGuardar: async (datos) => {
       return await enviar(`/monitor/operaciones/sucursales/${s.id}`, {
@@ -816,23 +1640,32 @@ function editarSucursal(s) {
   });
 }
 
-function eliminarSucursal(id, nombre) {
-  if (confirm(`¿Eliminar permanentemente la sucursal "${nombre}"?`)) {
-    enviar(`/monitor/operaciones/sucursales/${id}`, undefined, 'DELETE');
-  }
+function solicitarEditarSucursal(id) {
+  const s = (ultimoDato.sucursales || []).find(x => x.id === id);
+  if (s) editarSucursal(s);
 }
 
-// ---- CRUD de Inventario / Productos ----
+function solicitarEliminarSucursal(id) {
+  const s = (ultimoDato.sucursales || []).find(x => x.id === id);
+  const nombre = s ? s.nombre : `#${id}`;
+  pedirConfirmacion({
+    titulo: 'Eliminar Sede',
+    mensaje: `¿Desea eliminar la sucursal "${nombre}"?`,
+    onConfirmar: () => enviar(`/monitor/operaciones/sucursales/${id}`, undefined, 'DELETE')
+  });
+}
+
+// CRUD Productos
 function crearProducto() {
   abrirModal({
-    titulo: 'Nuevo Producto / Artículo',
-    botonTexto: 'Crear Producto',
+    titulo: 'Nuevo Artículo en Catálogo',
+    botonTexto: 'Agregar Producto',
     campos: [
-      { nombre: 'codigo', etiqueta: 'Código (ej. PROD-001)', requerido: true },
-      { nombre: 'nombre', etiqueta: 'Nombre del Producto', requerido: true },
-      { nombre: 'categoria', etiqueta: 'Categoría (ej. Óptica, Bastones, Accesorios)', colSpan: 2 },
+      { nombre: 'codigo', etiqueta: 'Código Identificador (ej. BAST-05)', requerido: true },
+      { nombre: 'nombre', etiqueta: 'Descripción del Artículo', requerido: true },
+      { nombre: 'categoria', etiqueta: 'Categoría (ej. Movilidad, Óptica, Taller)', colSpan: 2 },
       { nombre: 'precioVenta', etiqueta: 'Precio de Venta (RD$)', tipo: 'number', step: '0.01', min: '0', valor: '0.00', requerido: true },
-      { nombre: 'stockDisponible', etiqueta: 'Stock Inicial', tipo: 'number', min: '0', valor: '0', requerido: true }
+      { nombre: 'stockDisponible', etiqueta: 'Stock Inicial Físico', tipo: 'number', min: '0', valor: '10', requerido: true }
     ],
     onGuardar: async (datos) => {
       return await enviar('/monitor/operaciones/productos', {
@@ -848,11 +1681,11 @@ function crearProducto() {
 
 function editarProducto(p) {
   abrirModal({
-    titulo: `Editar Producto: ${p.nombre}`,
+    titulo: `Editar Artículo: ${p.nombre}`,
     botonTexto: 'Guardar Cambios',
     campos: [
       { nombre: 'codigo', etiqueta: 'Código', valor: p.codigo, requerido: true },
-      { nombre: 'nombre', etiqueta: 'Nombre', valor: p.nombre, requerido: true },
+      { nombre: 'nombre', etiqueta: 'Descripción', valor: p.nombre, requerido: true },
       { nombre: 'categoria', etiqueta: 'Categoría', valor: p.categoria || '', colSpan: 2 },
       { nombre: 'precioVenta', etiqueta: 'Precio de Venta (RD$)', tipo: 'number', step: '0.01', min: '0', valor: p.precioVenta, requerido: true, colSpan: 2 }
     ],
@@ -867,28 +1700,37 @@ function editarProducto(p) {
   });
 }
 
-function eliminarProducto(id, nombre) {
-  if (confirm(`¿Eliminar permanentemente el producto "${nombre}"?`)) {
-    enviar(`/monitor/operaciones/productos/${id}`, undefined, 'DELETE');
-  }
+function solicitarEditarProducto(id) {
+  const p = (ultimoDato.productos || []).find(x => x.id === id);
+  if (p) editarProducto(p);
 }
 
-// ---- CRUD de Beneficiarios ----
+function solicitarEliminarProducto(id) {
+  const p = (ultimoDato.productos || []).find(x => x.id === id);
+  const nombre = p ? p.nombre : `#${id}`;
+  pedirConfirmacion({
+    titulo: 'Eliminar Artículo',
+    mensaje: `¿Confirma la eliminación del producto "${nombre}" del catálogo?`,
+    onConfirmar: () => enviar(`/monitor/operaciones/productos/${id}`, undefined, 'DELETE')
+  });
+}
+
+// CRUD Beneficiarios
 function crearBeneficiario() {
   abrirModal({
     titulo: 'Nuevo Beneficiario',
-    botonTexto: 'Crear Beneficiario',
+    botonTexto: 'Registrar Beneficiario',
     campos: [
       { nombre: 'nombres', etiqueta: 'Nombres', requerido: true },
       { nombre: 'apellidos', etiqueta: 'Apellidos', requerido: true },
-      { nombre: 'cedula', etiqueta: 'Cédula / Identificación' },
-      { nombre: 'telefono', etiqueta: 'Teléfono' },
+      { nombre: 'cedula', etiqueta: 'Cédula de Identidad (ej. 001-XXXXXXX-X)' },
+      { nombre: 'telefono', etiqueta: 'Teléfono de Contacto' },
       {
         nombre: 'sedeAsignada',
         etiqueta: 'Sede Asignada',
         tipo: 'select',
         opciones: [
-          { valor: 1, texto: 'Santo Domingo' },
+          { valor: 1, texto: 'Santo Domingo (Sede Central)' },
           { valor: 2, texto: 'Santiago' },
           { valor: 3, texto: 'Barahona' }
         ],
@@ -900,8 +1742,8 @@ function crearBeneficiario() {
         tipo: 'select',
         opciones: [
           { valor: 1, texto: 'Baja Visión' },
-          { valor: 2, texto: 'Ceguera Congénita' },
-          { valor: 3, texto: 'Ceguera Adquirida' }
+          { valor: 2, texto: 'Ceguera Total Congénita' },
+          { valor: 3, texto: 'Ceguera Total Adquirida' }
         ],
         valor: 1
       }
@@ -940,72 +1782,167 @@ function editarBeneficiario(b) {
   });
 }
 
-function eliminarBeneficiario(id, nombre) {
-  if (confirm(`¿Eliminar permanentemente a "${nombre}"? Esta acción no se puede deshacer.`)) {
-    enviar(`/monitor/operaciones/beneficiarios/${id}`, undefined, 'DELETE');
-  }
+function solicitarEditarBeneficiario(id) {
+  const b = (ultimoDato.beneficiarios || []).find(x => x.id === id);
+  if (b) editarBeneficiario(b);
 }
 
-let ultimoDato = { usuarios: [], sucursales: [], productos: [], beneficiarios: [] };
+function solicitarEliminarBeneficiario(id) {
+  const b = (ultimoDato.beneficiarios || []).find(x => x.id === id);
+  const nombre = b ? `${b.nombres} ${b.apellidos}` : `#${id}`;
+  pedirConfirmacion({
+    titulo: 'Eliminar Beneficiario',
+    mensaje: `¿Confirma la eliminación del beneficiario "${nombre}"? Si cuenta con historial de consultas o préstamos no podrá eliminarse, pero podrá desactivarse.`,
+    onConfirmar: () => enviar(`/monitor/operaciones/beneficiarios/${id}`, undefined, 'DELETE')
+  });
+}
 
 function pintar(d) {
   ultimoDato = d;
   ROLES = Object.fromEntries((d.roles || []).map(r => [r.id, r.nombre]));
   ROLES_RESTRINGIDOS = new Set((d.roles || []).filter(r => r.restringido).map(r => r.id));
+
+  // Actualizar contadores KPI
+  document.getElementById('statUsuarios').textContent = (d.usuarios || []).length;
+  document.getElementById('statSucursales').textContent = (d.sucursales || []).length;
+  document.getElementById('statProductos').textContent = (d.productos || []).length;
+  document.getElementById('statBeneficiarios').textContent = (d.beneficiarios || []).length;
+
+  document.getElementById('countTabUsuarios').textContent = (d.usuarios || []).length;
+  document.getElementById('countTabSucursales').textContent = (d.sucursales || []).length;
+  document.getElementById('countTabProductos').textContent = (d.productos || []).length;
+  document.getElementById('countTabBeneficiarios').textContent = (d.beneficiarios || []).length;
+
+  renderTablas();
+}
+
+function renderTablas() {
+  const d = ultimoDato;
   const puedeGestionar = MI_PERMISOS.has('monitor.gestionar');
   const dis = puedeGestionar ? '' : 'disabled';
+  const q = (document.getElementById('filtroGlobal')?.value || '').toLowerCase().trim();
 
-  document.getElementById('tablaUsuarios').innerHTML = d.usuarios.map(u => `
-    <tr>
-      <td>${u.nombreCompleto}</td>
-      <td>${u.nombreUsuario}</td>
-      <td>${u.correo ?? ''}</td>
-      <td><select ${dis} onchange="cambiarRol(${u.id}, this)">
-        ${Object.entries(ROLES).map(([v, t]) => `<option value="${v}" ${Number(v) === u.rol ? 'selected' : ''}>${t}${ROLES_RESTRINGIDOS.has(Number(v)) ? ' 🔒' : ''}</option>`).join('')}
-      </select></td>
-      <td>#${u.sucursalId}</td>
-      <td><select ${dis} onchange="cambiarEstado(${u.id}, this)">
-        ${ESTADOS.map(e => `<option value="${e}" ${e === u.estadoCuenta ? 'selected' : ''}>${e}</option>`).join('')}
-      </select></td>
-      <td class="accion">${!puedeGestionar ? '—' : `
-        <button onclick="editarUsuario(ultimoDato.usuarios.find(x=>x.id===${u.id}))">Editar</button>
-        <button class="peligro" onclick="eliminarUsuario(${u.id}, '${(u.nombreCompleto || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      `}</td>
-    </tr>`).join('');
+  // 1. Usuarios
+  const usuarios = q
+    ? (d.usuarios || []).filter(u =>
+        (u.nombreCompleto && u.nombreCompleto.toLowerCase().includes(q)) ||
+        (u.nombreUsuario && u.nombreUsuario.toLowerCase().includes(q)) ||
+        (u.correo && u.correo.toLowerCase().includes(q)) ||
+        (ROLES[u.rol] && ROLES[u.rol].toLowerCase().includes(q)))
+    : (d.usuarios || []);
 
-  document.getElementById('tablaSucursales').innerHTML = d.sucursales.map(s => `
-    <tr>
-      <td>${s.nombre}</td><td>${s.direccion}</td><td>${s.telefono}</td><td>${s.encargado}</td>
-      <td><span class="tag ${s.activa ? 'tag-ok' : 'tag-mal'}">${s.activa ? 'Activa' : 'Inactiva'}</span></td>
-      <td class="accion">${!puedeGestionar ? '—' : `
-        <button onclick="editarSucursal(ultimoDato.sucursales.find(x=>x.id===${s.id}))">Editar</button>
-        <button class="${s.activa ? 'peligro' : 'exito'}" onclick="toggleSucursal(${s.id}, ${s.activa})">${s.activa ? 'Desactivar' : 'Activar'}</button>
-        <button class="peligro" onclick="eliminarSucursal(${s.id}, '${(s.nombre || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      `}</td>
-    </tr>`).join('');
+  const tbodyUsuarios = document.getElementById('tablaUsuarios');
+  if (usuarios.length === 0) {
+    tbodyUsuarios.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No se encontraron usuarios registrados.</td></tr>';
+  } else {
+    tbodyUsuarios.innerHTML = usuarios.map(u => `
+      <tr>
+        <td><strong>${esc(u.nombreCompleto)}</strong></td>
+        <td><code>${esc(u.nombreUsuario)}</code></td>
+        <td>${esc(u.correo || '—')}</td>
+        <td><select class="select-tabla" ${dis} onchange="cambiarRol(${u.id}, this)">
+          ${Object.entries(ROLES).map(([v, t]) => `<option value="${v}" ${Number(v) === u.rol ? 'selected' : ''}>${esc(t)}${ROLES_RESTRINGIDOS.has(Number(v)) ? ' 🔒' : ''}</option>`).join('')}
+        </select></td>
+        <td>Sede #${u.sucursalId}</td>
+        <td><select class="select-tabla" ${dis} onchange="cambiarEstado(${u.id}, this)">
+          ${ESTADOS.map(e => `<option value="${e}" ${e === u.estadoCuenta ? 'selected' : ''}>${e}</option>`).join('')}
+        </select></td>
+        <td class="accion">${!puedeGestionar ? '—' : `
+          <button class="btn-secundario" onclick="solicitarEditarUsuario(${u.id})">✏️ Editar</button>
+          <button class="peligro" onclick="solicitarEliminarUsuario(${u.id})">🗑️ Eliminar</button>
+        `}</td>
+      </tr>`).join('');
+  }
 
-  document.getElementById('tablaProductos').innerHTML = d.productos.map(p => `
-    <tr>
-      <td>${p.codigo}</td><td>${p.nombre}</td><td>${p.categoria}</td>
-      <td>RD$ ${p.precioVenta.toFixed(2)}</td><td>${p.stockDisponible}</td>
-      <td class="accion">${!puedeGestionar ? '—' : `<input class="stock" type="number" placeholder="±cant." id="stock-${p.id}" />
-        <button class="exito" onclick="ajustarStock(${p.id}, document.getElementById('stock-${p.id}'))">Ajustar</button>`}</td>
-      <td class="accion">${!puedeGestionar ? '—' : `
-        <button onclick="editarProducto(ultimoDato.productos.find(x=>x.id===${p.id}))">Editar</button>
-        <button class="peligro" onclick="eliminarProducto(${p.id}, '${(p.nombre || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      `}</td>
-    </tr>`).join('');
+  // 2. Sucursales
+  const sucursales = q
+    ? (d.sucursales || []).filter(s =>
+        (s.nombre && s.nombre.toLowerCase().includes(q)) ||
+        (s.direccion && s.direccion.toLowerCase().includes(q)) ||
+        (s.telefono && s.telefono.toLowerCase().includes(q)) ||
+        (s.encargado && s.encargado.toLowerCase().includes(q)))
+    : (d.sucursales || []);
 
-  document.getElementById('tablaBeneficiarios').innerHTML = d.beneficiarios.map(b => `
-    <tr>
-      <td>${b.nombres} ${b.apellidos}</td><td>${b.cedula}</td><td>${b.telefono}</td>
-      <td><span class="tag ${b.activo ? 'tag-ok' : 'tag-mal'}">${b.activo ? 'Activo' : 'Inactivo'}</span></td>
-      <td class="accion">${!puedeGestionar ? '—' : `
-        <button onclick="editarBeneficiario(ultimoDato.beneficiarios.find(x=>x.id===${b.id}))">Editar</button>
-        <button class="${b.activo ? 'peligro' : 'exito'}" onclick="toggleBeneficiario(${b.id}, ${b.activo})">${b.activo ? 'Desactivar' : 'Activar'}</button>
-        <button class="peligro" onclick="eliminarBeneficiario(${b.id}, '${(b.nombres || '').replace(/'/g, "\\'")}')">Eliminar</button>
-      `}</td>
-    </tr>`).join('');
+  const tbodySucursales = document.getElementById('tablaSucursales');
+  if (sucursales.length === 0) {
+    tbodySucursales.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">No se encontraron sedes.</td></tr>';
+  } else {
+    tbodySucursales.innerHTML = sucursales.map(s => `
+      <tr>
+        <td><strong>${esc(s.nombre)}</strong></td>
+        <td>${esc(s.direccion || '—')}</td>
+        <td>${esc(s.telefono || '—')}</td>
+        <td>${esc(s.encargado || '—')}</td>
+        <td><span class="tag ${s.activa ? 'tag-ok' : 'tag-mal'}">${s.activa ? '● Activa' : '○ Inactiva'}</span></td>
+        <td class="accion">${!puedeGestionar ? '—' : `
+          <button class="btn-secundario" onclick="solicitarEditarSucursal(${s.id})">✏️ Editar</button>
+          <button class="${s.activa ? 'peligro' : 'exito'}" onclick="toggleSucursal(${s.id}, ${s.activa})">${s.activa ? 'Desactivar' : 'Activar'}</button>
+          <button class="peligro" onclick="solicitarEliminarSucursal(${s.id})">🗑️</button>
+        `}</td>
+      </tr>`).join('');
+  }
+
+  // 3. Productos
+  const productos = q
+    ? (d.productos || []).filter(p =>
+        (p.codigo && p.codigo.toLowerCase().includes(q)) ||
+        (p.nombre && p.nombre.toLowerCase().includes(q)) ||
+        (p.categoria && p.categoria.toLowerCase().includes(q)))
+    : (d.productos || []);
+
+  const tbodyProductos = document.getElementById('tablaProductos');
+  if (productos.length === 0) {
+    tbodyProductos.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted);">No se encontraron productos en catálogo.</td></tr>';
+  } else {
+    tbodyProductos.innerHTML = productos.map(p => `
+      <tr>
+        <td><span class="tag tag-ok"><code>${esc(p.codigo)}</code></span></td>
+        <td><strong>${esc(p.nombre)}</strong></td>
+        <td><span class="tag" style="background:#334155;color:#e2e8f0;">${esc(p.categoria || 'General')}</span></td>
+        <td style="font-weight:700;color:#38bdf8;">RD$ ${p.precioVenta.toFixed(2)}</td>
+        <td>
+          <span style="font-weight:700;color:${p.stockDisponible <= 5 ? '#f87171' : '#34d399'};">
+            ${p.stockDisponible} uds
+          </span>
+          ${p.stockDisponible <= 5 ? '<span class="tag tag-mal" style="margin-left:6px;font-size:9.5px;">Bajo</span>' : ''}
+        </td>
+        <td class="accion">${!puedeGestionar ? '—' : `
+          <input class="input-stock" type="number" placeholder="± cant." id="stock-${p.id}" />
+          <button class="exito" onclick="ajustarStock(${p.id}, document.getElementById('stock-${p.id}'))">Ajustar</button>
+        `}</td>
+        <td class="accion">${!puedeGestionar ? '—' : `
+          <button class="btn-secundario" onclick="solicitarEditarProducto(${p.id})">✏️ Editar</button>
+          <button class="peligro" onclick="solicitarEliminarProducto(${p.id})">🗑️</button>
+        `}</td>
+      </tr>`).join('');
+  }
+
+  // 4. Beneficiarios
+  const beneficiarios = q
+    ? (d.beneficiarios || []).filter(b =>
+        (b.nombres && b.nombres.toLowerCase().includes(q)) ||
+        (b.apellidos && b.apellidos.toLowerCase().includes(q)) ||
+        (b.cedula && b.cedula.toLowerCase().includes(q)) ||
+        (b.telefono && b.telefono.toLowerCase().includes(q)))
+    : (d.beneficiarios || []);
+
+  const tbodyBeneficiarios = document.getElementById('tablaBeneficiarios');
+  if (beneficiarios.length === 0) {
+    tbodyBeneficiarios.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No se encontraron beneficiarios.</td></tr>';
+  } else {
+    tbodyBeneficiarios.innerHTML = beneficiarios.map(b => `
+      <tr>
+        <td><strong>${esc(b.nombres)} ${esc(b.apellidos)}</strong></td>
+        <td><code>${esc(b.cedula || '—')}</code></td>
+        <td>${esc(b.telefono || '—')}</td>
+        <td><span class="tag ${b.activo ? 'tag-ok' : 'tag-mal'}">${b.activo ? '● Activo' : '○ Inactivo'}</span></td>
+        <td class="accion">${!puedeGestionar ? '—' : `
+          <button class="btn-secundario" onclick="solicitarEditarBeneficiario(${b.id})">✏️ Editar</button>
+          <button class="${b.activo ? 'peligro' : 'exito'}" onclick="toggleBeneficiario(${b.id}, ${b.activo})">${b.activo ? 'Desactivar' : 'Activar'}</button>
+          <button class="peligro" onclick="solicitarEliminarBeneficiario(${b.id})">🗑️</button>
+        `}</td>
+      </tr>`).join('');
+  }
 }
 </script>
 </body>

@@ -32,6 +32,7 @@ namespace Patronato.Caja
         private List<ConsultaItem> _consultasPendientes = new();
         private List<PrestamoItem> _prestamosActivos = new();
         private List<TransaccionCajaDto> _recibosHistorial = new();
+        private TurnoCajaDto? _turnoActivo = null;
 
         public MainWindow()
         {
@@ -48,6 +49,7 @@ namespace Patronato.Caja
         {
             CargarInfoSesion();
             await CargarDatosInicialesAsync();
+            await CargarTurnoActivoAsync();
             ActualizarBadgePendientes();
         }
 
@@ -68,6 +70,11 @@ namespace Patronato.Caja
         private void ConfigurarSincronizacion()
         {
             OfflineQueueService.CambioPendientes += () => Dispatcher.Invoke(ActualizarBadgePendientes);
+            OfflineQueueService.TransaccionRechazada += (recibo, motivo) => Dispatcher.Invoke(() =>
+                MessageBox.Show($"La transacción offline '{recibo}' fue rechazada por el Core:\n{motivo}",
+                                "Alerta de Sincronización",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Warning));
 
             _syncTimer.Interval = TimeSpan.FromSeconds(15);
             _syncTimer.Tick += async (s, e) => await IntentarSincronizarPendientesAsync();
@@ -93,6 +100,109 @@ namespace Patronato.Caja
             {
                 _sincronizando = false;
                 ActualizarBadgePendientes();
+            }
+        }
+
+        // =========================================================
+        // ATAJOS DE TECLADO ERGONÓMICOS (POS / CAJA RÁPIDA)
+        // =========================================================
+        private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.F1:
+                    MainTabControl.SelectedIndex = 0;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F2:
+                    MainTabControl.SelectedIndex = 1;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F3:
+                    MainTabControl.SelectedIndex = 2;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F4:
+                    MainTabControl.SelectedIndex = 3;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F5:
+                    MainTabControl.SelectedIndex = 4;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F6:
+                    MainTabControl.SelectedIndex = 5;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F7:
+                    MainTabControl.SelectedIndex = 6;
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.F12:
+                    EjecutarAccionCobroActual();
+                    e.Handled = true;
+                    break;
+                case System.Windows.Input.Key.Escape:
+                    CancelarOperacionActual();
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void EjecutarAccionCobroActual()
+        {
+            switch (MainTabControl.SelectedIndex)
+            {
+                case 0:
+                    if (BtnCobrarVenta.IsEnabled) BtnCobrarVenta_Click(this, new RoutedEventArgs());
+                    break;
+                case 1:
+                    if (BtnCobrarMasaje.IsEnabled) BtnCobrarMasaje_Click(this, new RoutedEventArgs());
+                    break;
+                case 2:
+                    if (BtnCobrarConsulta.IsEnabled) BtnCobrarConsulta_Click(this, new RoutedEventArgs());
+                    break;
+                case 3:
+                    if (BtnAplicarAbono.IsEnabled) BtnAplicarAbono_Click(this, new RoutedEventArgs());
+                    break;
+                case 4:
+                    if (BtnRegistrarDonacion.IsEnabled) BtnRegistrarDonacion_Click(this, new RoutedEventArgs());
+                    break;
+                case 5:
+                    BtnActualizarArqueo_Click(this, new RoutedEventArgs());
+                    break;
+                case 6:
+                    BtnReimprimirRecibo_Click(this, new RoutedEventArgs());
+                    break;
+            }
+        }
+
+        private void CancelarOperacionActual()
+        {
+            switch (MainTabControl.SelectedIndex)
+            {
+                case 0:
+                    BtnVaciarCarrito_Click(this, new RoutedEventArgs());
+                    break;
+                case 1:
+                    GridMasajes.SelectedItem = null;
+                    DesactivarCobroMasaje();
+                    break;
+                case 2:
+                    GridConsultas.SelectedItem = null;
+                    DesactivarCobroConsulta();
+                    break;
+                case 3:
+                    GridPrestamos.SelectedItem = null;
+                    DesactivarCobroPrestamo();
+                    break;
+                case 4:
+                    CmbDonantesFrecuentes.Text = "";
+                    TxtDonanteRnc.Text = "";
+                    break;
+                case 6:
+                    TxtBuscarRecibo.Text = "";
+                    break;
             }
         }
 
@@ -223,8 +333,15 @@ namespace Patronato.Caja
         // =========================================================
         private async Task CargarProductosAsync()
         {
-            _catalogoProductos = await _apiService.GetProductosInventarioAsync();
-            FiltrarProductos();
+            try
+            {
+                _catalogoProductos = await _apiService.GetProductosInventarioAsync();
+                FiltrarProductos();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Error al cargar productos de inventario.", ex);
+            }
         }
 
         private void FiltrarProductos()
@@ -430,6 +547,8 @@ namespace Patronato.Caja
 
         private async void BtnCobrarVenta_Click(object sender, RoutedEventArgs e)
         {
+            if (!await AsegurarTurnoActivoAsync()) return;
+
             if (!_carrito.Any())
             {
                 MessageBox.Show("El carrito de compras está vacío. Agregue productos antes de cobrar.", "Carrito Vacío", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -503,10 +622,17 @@ namespace Patronato.Caja
         // =========================================================
         private async Task CargarMasajesAsync()
         {
-            _masajesPendientes = await _apiService.GetMasajesPendientesAsync();
-            GridMasajes.ItemsSource = null;
-            GridMasajes.ItemsSource = _masajesPendientes;
-            DesactivarCobroMasaje();
+            try
+            {
+                _masajesPendientes = await _apiService.GetMasajesPendientesAsync();
+                GridMasajes.ItemsSource = null;
+                GridMasajes.ItemsSource = _masajesPendientes;
+                DesactivarCobroMasaje();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Error al cargar masajes pendientes.", ex);
+            }
         }
 
         private async void BtnActualizarMasajes_Click(object sender, RoutedEventArgs e)
@@ -554,6 +680,8 @@ namespace Patronato.Caja
 
         private async void BtnCobrarMasaje_Click(object sender, RoutedEventArgs e)
         {
+            if (!await AsegurarTurnoActivoAsync()) return;
+
             if (GridMasajes.SelectedItem is not SesionMasajeItem sesion)
                 return;
 
@@ -612,10 +740,17 @@ namespace Patronato.Caja
         // =========================================================
         private async Task CargarConsultasAsync()
         {
-            _consultasPendientes = await _apiService.GetConsultasPendientesAsync();
-            GridConsultas.ItemsSource = null;
-            GridConsultas.ItemsSource = _consultasPendientes;
-            DesactivarCobroConsulta();
+            try
+            {
+                _consultasPendientes = await _apiService.GetConsultasPendientesAsync();
+                GridConsultas.ItemsSource = null;
+                GridConsultas.ItemsSource = _consultasPendientes;
+                DesactivarCobroConsulta();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Error al cargar consultas pendientes.", ex);
+            }
         }
 
         private async void BtnActualizarConsultas_Click(object sender, RoutedEventArgs e)
@@ -658,6 +793,8 @@ namespace Patronato.Caja
 
         private async void BtnCobrarConsulta_Click(object sender, RoutedEventArgs e)
         {
+            if (!await AsegurarTurnoActivoAsync()) return;
+
             if (GridConsultas.SelectedItem is not ConsultaItem consulta)
                 return;
 
@@ -716,11 +853,18 @@ namespace Patronato.Caja
         // =========================================================
         private async Task CargarPrestamosAsync()
         {
-            string filtro = TxtBuscarPrestamo.Text.Trim();
-            _prestamosActivos = await _apiService.GetPrestamosActivosAsync(filtro);
-            GridPrestamos.ItemsSource = null;
-            GridPrestamos.ItemsSource = _prestamosActivos;
-            DesactivarCobroPrestamo();
+            try
+            {
+                string filtro = TxtBuscarPrestamo.Text.Trim();
+                _prestamosActivos = await _apiService.GetPrestamosActivosAsync(filtro);
+                GridPrestamos.ItemsSource = null;
+                GridPrestamos.ItemsSource = _prestamosActivos;
+                DesactivarCobroPrestamo();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Error al cargar préstamos activos.", ex);
+            }
         }
 
         private async void BtnBuscarPrestamo_Click(object sender, RoutedEventArgs e)
@@ -777,6 +921,8 @@ namespace Patronato.Caja
 
         private async void BtnAplicarAbono_Click(object sender, RoutedEventArgs e)
         {
+            if (!await AsegurarTurnoActivoAsync()) return;
+
             if (GridPrestamos.SelectedItem is not PrestamoItem prestamo)
                 return;
 
@@ -850,6 +996,8 @@ namespace Patronato.Caja
 
         private async void BtnRegistrarDonacion_Click(object sender, RoutedEventArgs e)
         {
+            if (!await AsegurarTurnoActivoAsync()) return;
+
             string donante = string.IsNullOrWhiteSpace(CmbDonantesFrecuentes.Text) ? "Donante Anónimo" : CmbDonantesFrecuentes.Text.Trim();
             string rncCedula = TxtDonanteRnc.Text.Trim();
 
@@ -920,32 +1068,50 @@ namespace Patronato.Caja
         // =========================================================
         private async Task CargarArqueoAsync()
         {
-            var cuadre = await _apiService.GetCuadreCajaAsync();
-            if (cuadre == null) return;
+            try
+            {
+                var cuadre = await _apiService.GetCuadreCajaAsync();
+                if (cuadre == null) return;
 
-            TxtKpiTotalGeneral.Text = $"RD$ {cuadre.TotalGeneral:N2}";
-            TxtKpiCantidadTx.Text = $"{cuadre.CantidadTransacciones} transacciones registradas";
+                TxtKpiTotalGeneral.Text = $"RD$ {cuadre.TotalGeneral:N2}";
+                TxtKpiCantidadTx.Text = $"{cuadre.CantidadTransacciones} transacciones registradas";
 
-            TxtKpiEfectivo.Text = $"RD$ {cuadre.PorMetodo.Efectivo:N2}";
-            TxtKpiTarjeta.Text = $"RD$ {cuadre.PorMetodo.Tarjeta:N2}";
-            TxtKpiTransferencia.Text = $"RD$ {cuadre.PorMetodo.Transferencia:N2}";
+                TxtKpiFondoInicial.Text = $"RD$ {cuadre.FondoInicial:N2}";
+                TxtKpiEfectivoEsperado.Text = $"RD$ {cuadre.EfectivoEsperadoEnCaja:N2}";
+                TxtKpiTotalAnulado.Text = $"RD$ {cuadre.TotalAnulado:N2} ({cuadre.CantidadAnuladas} anul.)";
 
-            TxtKpiVentas.Text = $"RD$ {cuadre.PorConcepto.VentasProductos:N2}";
-            TxtKpiMasajes.Text = $"RD$ {cuadre.PorConcepto.MasajesTacto:N2}";
-            TxtKpiPrestamos.Text = $"RD$ {cuadre.PorConcepto.AbonosPrestamos:N2}";
-            TxtKpiDonaciones.Text = $"RD$ {cuadre.PorConcepto.Donaciones:N2}";
+                TxtKpiEfectivo.Text = $"RD$ {cuadre.PorMetodo?.Efectivo ?? 0m:N2}";
+                TxtKpiTarjeta.Text = $"RD$ {cuadre.PorMetodo?.Tarjeta ?? 0m:N2}";
+                TxtKpiTransferencia.Text = $"RD$ {cuadre.PorMetodo?.Transferencia ?? 0m:N2}";
 
-            GridMovimientosTurno.ItemsSource = cuadre.Movimientos;
+                TxtKpiVentas.Text = $"RD$ {cuadre.PorConcepto?.VentasProductos ?? 0m:N2}";
+                TxtKpiMasajes.Text = $"RD$ {cuadre.PorConcepto?.MasajesTacto ?? 0m:N2}";
+                TxtKpiConsultas.Text = $"RD$ {cuadre.PorConcepto?.Consultas ?? 0m:N2}";
+                TxtKpiPrestamos.Text = $"RD$ {cuadre.PorConcepto?.AbonosPrestamos ?? 0m:N2}";
+                TxtKpiDonaciones.Text = $"RD$ {cuadre.PorConcepto?.Donaciones ?? 0m:N2}";
+
+                GridMovimientosTurno.ItemsSource = cuadre.Movimientos;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Error al cargar arqueo de caja.", ex);
+            }
         }
 
         private async void BtnActualizarArqueo_Click(object sender, RoutedEventArgs e)
         {
             await CargarArqueoAsync();
+            await CargarTurnoActivoAsync();
             SetEstado("Arqueo de caja actualizado con éxito.");
         }
 
         private async void BtnImprimirCierre_Click(object sender, RoutedEventArgs e)
         {
+            if (_turnoActivo == null)
+            {
+                await CargarTurnoActivoAsync();
+            }
+
             var cuadre = await _apiService.GetCuadreCajaAsync();
             if (cuadre == null)
             {
@@ -953,20 +1119,135 @@ namespace Patronato.Caja
                 return;
             }
 
-            // El cierre de caja es un reporte de arqueo, no una venta: tiene su propia
-            // ventana con estilo de documento (tablas de resumen + firmas), distinta del
-            // comprobante angosto que se usa para recibos de venta (ver ReceiptPreviewWindow).
-            var reporte = new CierreCajaWindow(cuadre) { Owner = this };
+            var reporte = new CierreCajaWindow(cuadre, _turnoActivo) { Owner = this };
             reporte.ShowDialog();
+            if (reporte.TurnoCerrado)
+            {
+                await CargarTurnoActivoAsync();
+                await CargarArqueoAsync();
+            }
+        }
+
+        public async Task CargarTurnoActivoAsync()
+        {
+            try
+            {
+                var res = await _apiService.GetTurnoActivoAsync();
+                if (res != null && res.TieneTurnoActivo && res.Turno != null)
+                {
+                    _turnoActivo = res.Turno;
+                    string idTexto = _turnoActivo.Id < 0 ? $"Contingencia #{Math.Abs(_turnoActivo.Id):0000}" : $"#{_turnoActivo.Id}";
+                    TxtInfoTurno.Text = $"Turno {idTexto} (Fondo: RD$ {_turnoActivo.FondoInicial:N0})";
+                    BadgeTurno.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(6, 95, 70)); // Emerald
+                    BtnGestionTurno.Content = "Cierre de Turno";
+                    BannerTurnoRequerido.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    _turnoActivo = null;
+                    TxtInfoTurno.Text = "Sin Turno Abierto";
+                    BadgeTurno.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(185, 28, 28)); // Red
+                    BtnGestionTurno.Content = "➕ Abrir Turno";
+                    BannerTurnoRequerido.Visibility = Visibility.Visible;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error al cargar turno activo.", ex);
+            }
+        }
+
+        private async void BtnGestionTurno_Click(object sender, RoutedEventArgs e)
+        {
+            if (_turnoActivo == null)
+            {
+                var apertura = new AperturaTurnoWindow { Owner = this };
+                if (apertura.ShowDialog() == true)
+                {
+                    await CargarTurnoActivoAsync();
+                    await CargarArqueoAsync();
+                }
+            }
+            else
+            {
+                var cuadre = await _apiService.GetCuadreCajaAsync();
+                if (cuadre == null)
+                {
+                    MessageBox.Show("No se pudo obtener el cuadre de caja actual.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                var cierre = new CierreCajaWindow(cuadre, _turnoActivo) { Owner = this };
+                cierre.ShowDialog();
+                if (cierre.TurnoCerrado)
+                {
+                    await CargarTurnoActivoAsync();
+                    await CargarArqueoAsync();
+                }
+            }
+        }
+
+        private async void BtnAbrirTurno_Click(object sender, RoutedEventArgs e)
+        {
+            if (_turnoActivo != null)
+            {
+                var res = MessageBox.Show($"Ya existe el Turno #{_turnoActivo.Id} activo.\n¿Desea cerrar el turno actual antes de abrir uno nuevo?", "Turno Ya Abierto", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (res == MessageBoxResult.Yes)
+                {
+                    BtnGestionTurno_Click(sender, e);
+                }
+                return;
+            }
+
+            var apertura = new AperturaTurnoWindow { Owner = this };
+            if (apertura.ShowDialog() == true)
+            {
+                await CargarTurnoActivoAsync();
+                await CargarArqueoAsync();
+            }
+        }
+
+        private async Task<bool> AsegurarTurnoActivoAsync()
+        {
+            if (_turnoActivo != null) return true;
+
+            await CargarTurnoActivoAsync();
+            if (_turnoActivo != null) return true;
+
+            var res = MessageBox.Show(
+                "No hay un turno de caja abierto en este momento.\n\nPara registrar cobros y movimientos de dinero, debe abrir el turno indicando el fondo inicial de la gaveta.\n\n¿Desea abrir el turno ahora?",
+                "Turno Requerido",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (res == MessageBoxResult.Yes)
+            {
+                var apertura = new AperturaTurnoWindow { Owner = this };
+                if (apertura.ShowDialog() == true)
+                {
+                    await CargarTurnoActivoAsync();
+                    await CargarArqueoAsync();
+                    return _turnoActivo != null;
+                }
+            }
+
+            return false;
         }
 
         // =========================================================
-        // 6. HISTORIAL DE RECIBOS
+        // 6. HISTORIAL DE RECIBOS Y ANULACIONES
         // =========================================================
         private async Task CargarHistorialRecibosAsync()
         {
-            _recibosHistorial = await _apiService.GetTransaccionesAsync();
-            FiltrarHistorialRecibos();
+            try
+            {
+                _recibosHistorial = await _apiService.GetTransaccionesAsync();
+                FiltrarHistorialRecibos();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Error al cargar historial de recibos.", ex);
+            }
         }
 
         private void FiltrarHistorialRecibos()
@@ -995,6 +1276,41 @@ namespace Patronato.Caja
             AbrirReciboSeleccionado();
         }
 
+        private async void BtnAnularRecibo_Click(object sender, RoutedEventArgs e)
+        {
+            if (GridRecibos.SelectedItem is not TransaccionCajaDto recibo)
+            {
+                MessageBox.Show("Por favor seleccione un recibo de la lista para anular.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (recibo.EsAnulada)
+            {
+                MessageBox.Show($"El recibo {recibo.NumeroRecibo} ya fue anulado previamente:\n• Motivo: {recibo.MotivoAnulacion}\n• Anulado por: {recibo.AnuladoPor} el {recibo.FechaHoraAnulacion:dd/MM/yyyy hh:mm tt}", "Recibo Ya Anulado", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                $"¿Está seguro de que desea anular el recibo {recibo.NumeroRecibo} por RD$ {recibo.MontoTotal:N2}?\n\nEsta operación revertirá el cobro y requiere autorización de supervisor/administrador.",
+                "Confirmar Solicitud de Anulación",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            var modal = new AnulacionSupervisorWindow(recibo) { Owner = this };
+            if (modal.ShowDialog() == true && modal.AnuladaExitosa)
+            {
+                await CargarHistorialRecibosAsync();
+                await CargarArqueoAsync();
+                await CargarProductosAsync();
+                await CargarMasajesAsync();
+                await CargarConsultasAsync();
+                await CargarPrestamosAsync();
+                SetEstado($"Recibo {recibo.NumeroRecibo} anulado correctamente.");
+            }
+        }
+
         private void GridRecibos_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             AbrirReciboSeleccionado();
@@ -1018,7 +1334,7 @@ namespace Patronato.Caja
         // =========================================================
         private void BtnCerrarSesion_Click(object sender, RoutedEventArgs e)
         {
-            var res = MessageBox.Show("¿Está seguro de que desea cerrar la sesión actual del turno de caja?", "Cerrar Turno", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var res = MessageBox.Show("¿Está seguro de que desea cerrar la sesión actual de la terminal?", "Cerrar Sesión", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (res == MessageBoxResult.Yes)
             {
                 _clockTimer.Stop();

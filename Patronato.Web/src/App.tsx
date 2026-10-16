@@ -5,6 +5,15 @@ import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { CambiarPasswordPage } from "./pages/CambiarPasswordPage";
 import { AgendarCitaPage } from "./pages/AgendarCitaPage";
+import { ServiciosPublicPage } from "./pages/public/ServiciosPublicPage";
+import { SimuladorPublicPage } from "./pages/public/SimuladorPublicPage";
+import { ImpactoPublicPage } from "./pages/public/ImpactoPublicPage";
+import { ProductosPublicPage } from "./pages/public/ProductosPublicPage";
+import { SedesPublicPage } from "./pages/public/SedesPublicPage";
+import { ComoFuncionaPage } from "./pages/public/ComoFuncionaPage";
+import { VerificarPage } from "./pages/public/VerificarPage";
+import { InduccionPersonalPage } from "./pages/public/InduccionPersonalPage";
+import { PortalPacientePage } from "./pages/public/PortalPacientePage";
 import { CitasPage } from "./pages/CitasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { BeneficiariosPage } from "./pages/BeneficiariosPage";
@@ -28,10 +37,20 @@ const GESTIONA_CITAS = ["Administrador", "Recepcionista", "MedicoOftalmologo", "
 export default function App() {
   return (
     <Routes>
-      {/* Pública: lo primero que ve cualquier visitante, sin necesidad de iniciar sesión */}
+      {/* Páginas públicas independientes con navegación fluida */}
       <Route path="/" element={<LandingPage />} />
+      <Route path="/como-funciona" element={<ComoFuncionaPage />} />
+      <Route path="/verificar" element={<VerificarPage />} />
+      <Route path="/induccion" element={<InduccionPersonalPage />} />
+      <Route path="/servicios" element={<ServiciosPublicPage />} />
+      <Route path="/simulador" element={<SimuladorPublicPage />} />
+      <Route path="/impacto" element={<ImpactoPublicPage />} />
+      <Route path="/productos" element={<ProductosPublicPage />} />
+      <Route path="/sedes" element={<SedesPublicPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/agendar-cita" element={<AgendarCitaPage />} />
+      <Route path="/portal-paciente" element={<PortalPacientePage />} />
+      <Route path="/mis-citas" element={<PortalPacientePage />} />
       {/* Fuera del <Layout>/ProtectedRoute a propósito: si estuviera adentro, un usuario
           con debeCambiarPassword=true entraría en un redirect loop contra sí misma. */}
       <Route path="/cambiar-password" element={<CambiarPasswordPage />} />

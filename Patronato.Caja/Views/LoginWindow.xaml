@@ -22,9 +22,9 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0">
-                    <!-- Icono o Escudo Representativo -->
-                    <Border Background="#2563EB" CornerRadius="12" Width="54" Height="54" HorizontalAlignment="Left" Margin="0,0,0,16">
-                        <TextBlock Text="PNC" Foreground="White" FontWeight="Bold" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!-- Logo Oficial Institucional -->
+                    <Border Background="White" CornerRadius="10" Width="140" Height="52" HorizontalAlignment="Left" Margin="0,0,0,16" Padding="6">
+                        <Image Source="/Assets/logo-pnc.png" RenderOptions.BitmapScalingMode="HighQuality" Stretch="Uniform" />
                     </Border>
                     <TextBlock Text="PATRONATO NACIONAL" Foreground="#93C5FD" FontSize="13" FontWeight="Bold" />
                     <TextBlock Text="DE CIEGOS" Foreground="White" FontSize="24" FontWeight="Bold" Margin="0,2,0,4" />
@@ -104,13 +104,35 @@
 
                     <!-- Contraseña -->
                     <TextBlock Text="Contraseña:" FontSize="12" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,4" />
-                    <PasswordBox x:Name="TxtPassword" 
-                                 Password="cajero123" 
-                                 Height="36" 
-                                 Padding="8,6" 
-                                 FontSize="13" 
-                                 BorderBrush="#CBD5E1" 
-                                 Margin="0,0,0,12" />
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox x:Name="TxtPassword" 
+                                     Grid.Column="0"
+                                     Password="cajero123" 
+                                     Height="36" 
+                                     Padding="8,6" 
+                                     FontSize="13" 
+                                     BorderBrush="#CBD5E1" />
+                        <TextBox x:Name="TxtPasswordVisible"
+                                 Grid.Column="0"
+                                 Visibility="Collapsed"
+                                 Height="36"
+                                 Padding="8,6"
+                                 FontSize="13"
+                                 BorderBrush="#CBD5E1" />
+                        <Button x:Name="BtnTogglePassword"
+                                Grid.Column="1"
+                                Content="👁️"
+                                Width="36" Height="36"
+                                Margin="4,0,0,0"
+                                Background="#F1F5F9"
+                                BorderBrush="#CBD5E1"
+                                ToolTip="Mostrar u ocultar contraseña"
+                                Click="BtnTogglePassword_Click" />
+                    </Grid>
 
                     <!-- Mensaje de Error -->
                     <TextBlock x:Name="TxtError" 

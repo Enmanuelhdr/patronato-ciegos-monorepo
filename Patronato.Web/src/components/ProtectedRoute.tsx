@@ -19,10 +19,10 @@ export function ProtectedRoute({
   if (!sesion) return <Navigate to="/login" replace />;
   if (sesion.debeCambiarPassword) return <Navigate to="/cambiar-password" replace />;
   if (roles && roles.length > 0 && !roles.includes(sesion.rol)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/panel" replace />;
   }
   if (permiso && !tienePermiso(permiso)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/panel" replace />;
   }
   return <>{children}</>;
 }

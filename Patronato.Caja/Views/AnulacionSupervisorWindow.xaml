@@ -1,0 +1,104 @@
+<Window x:Class="Patronato.Caja.Views.AnulacionSupervisorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Autorización de Anulación - Patronato Nacional de Ciegos" 
+        Height="540" Width="560"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F1F5F9">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#991B1B" CornerRadius="8" Padding="16,12" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="AUTORIZACIÓN DE ANULACIÓN DE RECIBO" Foreground="White" FontWeight="Bold" FontSize="14" />
+                <TextBlock Text="Se requiere la contraseña de un usuario Supervisor o Administrador para anular transacciones" Foreground="#FECACA" FontSize="11" Margin="0,2,0,0" />
+            </StackPanel>
+        </Border>
+
+        <!-- Contenido -->
+        <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="18">
+            <StackPanel VerticalAlignment="Center">
+                <!-- Ficha del Recibo -->
+                <Border Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="TxtNumeroRecibo" Text="RECIBO: POS-20261015-0001" FontWeight="Bold" FontSize="13" Foreground="#991B1B" />
+                            <TextBlock x:Name="TxtConcepto" Text="Concepto: Venta de Insumos" FontSize="11" Foreground="#475569" Margin="0,2,0,0" />
+                            <TextBlock x:Name="TxtCliente" Text="Cliente: Juan Pérez" FontSize="11" Foreground="#64748B" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock Text="MONTO A REVERTIR" FontSize="9" FontWeight="Bold" Foreground="#991B1B" HorizontalAlignment="Right" />
+                            <TextBlock x:Name="TxtMontoTotal" Text="RD$ 1,500.00" FontWeight="Bold" FontSize="16" Foreground="#991B1B" HorizontalAlignment="Right" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Credenciales Supervisor -->
+                <TextBlock Text="Usuario Supervisor / Administrador:" FontSize="11" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,4" />
+                <TextBox x:Name="TxtUsuarioSupervisor" FontSize="12" Padding="8,6" BorderBrush="#CBD5E1" Margin="0,0,0,10" Text="admin" />
+
+                <TextBlock Text="Contraseña del Supervisor:" FontSize="11" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,4" />
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <PasswordBox x:Name="TxtPasswordSupervisor" 
+                                 Grid.Column="0"
+                                 FontSize="14" 
+                                 Padding="8,6" 
+                                 BorderBrush="#CBD5E1" />
+                    <TextBox x:Name="TxtPasswordSupervisorVisible"
+                             Grid.Column="0"
+                             Visibility="Collapsed"
+                             FontSize="14"
+                             Padding="8,6"
+                             BorderBrush="#CBD5E1" />
+                    <Button x:Name="BtnToggleSupervisorPassword"
+                            Grid.Column="1"
+                            Content="👁️"
+                            Width="36" Height="36"
+                            Margin="4,0,0,0"
+                            Background="#F1F5F9"
+                            BorderBrush="#CBD5E1"
+                            ToolTip="Mostrar u ocultar contraseña"
+                            Click="BtnToggleSupervisorPassword_Click" />
+                </Grid>
+
+                <!-- Motivo Obligatorio -->
+                <TextBlock Text="Motivo de la Anulación (requerido para auditoría):" FontSize="11" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,4" />
+                <TextBox x:Name="TxtMotivo" Height="50" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontSize="11" Padding="8,6" BorderBrush="#CBD5E1" Background="White" Margin="0,0,0,8" />
+
+                <TextBlock Text="⚠️ Esta acción revertirá el dinero del cuadre, devolverá los insumos al stock o desmarcará los servicios cobrados." FontSize="10" Foreground="#DC2626" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- Botones de Acción -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Cancelar" Width="100" Height="36" Background="#E2E8F0" Foreground="#475569" FontWeight="SemiBold" FontSize="12" BorderThickness="0" Margin="0,0,10,0" IsCancel="True" Click="BtnCancelar_Click">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="6" />
+                    </Style>
+                </Button.Resources>
+            </Button>
+            <Button x:Name="BtnConfirmarAnulacion" Content="🚫 Confirmar Anulación" Width="170" Height="36" Background="#DC2626" Foreground="White" FontWeight="Bold" FontSize="12" BorderThickness="0" IsDefault="True" Click="BtnConfirmarAnulacion_Click">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="6" />
+                    </Style>
+                </Button.Resources>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>
